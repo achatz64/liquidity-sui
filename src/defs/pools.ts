@@ -1,0 +1,142 @@
+
+export enum Model {
+    None = "None",
+    Linear = "Linear",
+    Amm = "Amm",
+    StableAmm = "StableAmm",
+    Orderbook = "Orderbook",
+    Balancer = "Balancer",
+    KriyaStable = "KriyaStable",
+    AftermathStable = "AftermathStable",
+    UniswapV3 = "UniswapV3"
+}
+
+export enum Dex {
+    Cetus = "Cetus",
+    Aftermath = "Aftermath",
+    Bluefin = "Bluefin",
+    Kriya = "Kriya",
+    Turbos = "Turbos"
+}
+
+export interface Pool {
+    // required
+    address: string,
+    dex: Dex,
+    model: Model,
+
+    // static 
+    coin_types?: string[],
+    static_fee?: number // 100 * bps 
+    //static_fee_multi?: {[coin_in_index: string]: {[coin_out_index: string]: number}},
+    weights?: number[], // balancer
+    stable_amplification?: number,
+    tick_spacing?: number,
+    
+    // dynamic
+    balances?: bigint[], // per coin_type, u64
+    sqrt_price?: bigint, // u128, that is, X64
+    liquidity?: {tick_index: number, liquidity_net: bigint}[], // tick_index is I32 and fits in number, liquidity_net is I128
+    orderbook?: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]},
+
+    // meta
+    tvl?: number // in usdc
+    coin_decimals?: number[] // decimals of coin_types
+
+    // workflow
+    last_static_update?: {time_ms: number, success: boolean, counter: number}, 
+    last_dynamic_upgrade?: {time_ms: number, success: boolean, counter: number}, 
+    last_pull_ms?: {time_ms: number, success: boolean, counter: number} 
+    last_swap_ms?: number
+    last_liquidity_modification_ms?: number
+}
+
+export interface PoolClmm extends Pool {
+    coin_types: string[],
+    static_fee: number
+    tick_spacing: number, 
+    sqrt_price: bigint,
+    liquidity: {tick_index: number, liquidity_net: bigint}[],
+}
+
+export interface PoolAmm extends Pool {
+    coin_types: string[],
+    static_fee: number,
+    balances: bigint[]
+}
+
+export interface PoolOrderbook extends Pool {
+    coin_types: string[],
+    static_fee: number,
+    orderbook: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]}
+}
+
+export interface PoolBalancer extends Pool {
+    coin_types: string[],
+    static_fee: number,
+    balances: bigint[],
+    weights: number[], 
+}
+
+export function check_pool(pool: Pool) {
+    if (pool.address == undefined || pool.dex == undefined || pool.model == undefined) {
+        throw new Error("Undefined attributes");
+    }
+}
+
+export function check_static(pool: Pool): boolean {
+    if (pool.model == "UniswapV3") {
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.tick_spacing !== undefined)
+    }
+    else if (pool.model == "Amm" || pool.model == "Orderbook" || pool.model == "KriyaStable" || pool.model == "AftermathStable")  {
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined)
+    }
+    else if (pool.model == "StableAmm")  {
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.stable_amplification !== undefined)
+    }
+    else if (pool.model == "Balancer") {
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.weights !== undefined)
+    }
+    else {
+        throw new Error(`Unrecognized model ${pool.model} for pool ${pool.address}`)
+    }
+}
+
+export function check_dynamic(pool: Pool): boolean {
+    const check_for_static =  check_static(pool);
+
+    if (pool.model == "UniswapV3") {
+        return check_for_static && (pool.sqrt_price !== undefined && pool.liquidity !== undefined)
+    }
+    else if (pool.model == "Amm" || pool.model == "StableAmm" || pool.model == "KriyaStable" || pool.model == "AftermathStable")  {
+        return check_for_static &&  (pool.balances !== undefined)
+    }
+    else if (pool.model == "Orderbook")  {
+        return check_for_static &&  (pool.orderbook !== undefined)
+    }
+    else if (pool.model == "Balancer") {
+        return check_for_static &&  (pool.weights !== undefined && pool.balances != undefined) 
+    }
+    else {
+        throw new Error(`Unrecognized model ${pool.model} for pool ${pool.address}`)
+    }
+}
+
+export function add_workflow_elements(pool: Pool): Pool {
+    return {...pool, 
+        last_pull_ms: {time_ms: 0, success: true, counter: 0}, 
+        last_swap_ms: 0, 
+        last_liquidity_modification_ms: 0, 
+        last_static_update: {time_ms: 0, success: false, counter: 0}, 
+        last_dynamic_upgrade: {time_ms: 0, success: false, counter: 0}
+    }
+}
+
+export function update_coin_decimals_per_pool(pool: Pool, coins_decimals: {[coin_type: string]: number})  {
+    if (check_static(pool)) {
+        const coin_decimals = pool.coin_types!.map((t) => coins_decimals[t]);
+        if (coin_decimals.filter((n) => n == undefined).length == 0 ) {
+            pool.coin_decimals = coin_decimals;
+        }
+    } 
+}
