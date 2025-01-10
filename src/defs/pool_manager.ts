@@ -1,11 +1,14 @@
 import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic } from "./pools"
 import { logger, LogLevel, LogTopic } from "./logging"
 
-interface ConfigManager {
+export interface ConfigManager {
     dex: Dex,
     debug: boolean,
+    propose_pools_timer_ms: number,
     static_upgrade_wait_time_ms: number,
-    dynamic_upgrade_wait_time_ms: number
+    static_upgrade_timer_ms: number
+    dynamic_upgrade_wait_time_ms: number,
+    dynamic_upgrade_timer_ms: number
 }
 
 export class PoolManager {
@@ -62,17 +65,23 @@ export class PoolManager {
         }
     }
 
+    async propose_pools_and_add() {
+        const new_pools = await this.propose_pools();
+        this.add(new_pools);
+    }
+
     async propose_pools(): Promise<Pool[]> {
         throw new Error("Implement for each dex!")
     }
 
     async update_static() {
-        const now = Date.now();
-        const non_static_pools = this.pools.filter((pool) => {
-            return !check_static(pool) && (now - pool.last_static_update!.time_ms) >= this.config.static_upgrade_wait_time_ms;
-        });
-        if (non_static_pools.length > 0) {
-            try {
+        try {
+            const now = Date.now();
+            const non_static_pools = this.pools.filter((pool) => {
+                return !check_static(pool) && (now - pool.last_static_update!.time_ms) >= this.config.static_upgrade_wait_time_ms;
+            });
+            if (non_static_pools.length > 0) {
+            
                 non_static_pools.forEach(
                     (pool) => {
                         pool.last_static_update = {...pool.last_static_update!, time_ms: now, success: false}
@@ -81,9 +90,9 @@ export class PoolManager {
                 const status = await this.upgrade_to_static(non_static_pools);
                 status.forEach((value, i) => non_static_pools[i].last_static_update!.success = value);
             }
-            catch (error) {
-                logger(this.config.debug, LogLevel.ERROR, LogTopic.STATIC_UPDATE, (error as Error).message)
-            }
+        }
+        catch (error) {
+            logger(this.config.debug, LogLevel.ERROR, LogTopic.STATIC_UPDATE, (error as Error).message)
         }
     }
 
@@ -94,9 +103,10 @@ export class PoolManager {
     }
 
     async update_dynamic() {
-        const now = Date.now();
-        const non_dynamic_pools = this.pools.filter((pool) => !check_dynamic(pool) && (now - pool.last_dynamic_upgrade!.time_ms) > this.config.dynamic_upgrade_wait_time_ms);
         try {
+            const now = Date.now();
+            const non_dynamic_pools = this.pools.filter((pool) => !check_dynamic(pool) && (now - pool.last_dynamic_upgrade!.time_ms) > this.config.dynamic_upgrade_wait_time_ms);
+       
             non_dynamic_pools.forEach(
                 (pool) => {
                     pool.last_dynamic_upgrade = {...pool.last_dynamic_upgrade!, time_ms: now, success: false}
@@ -126,18 +136,14 @@ export class PoolManager {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    async update(pools: Pool[]) {
+    async update() {
         throw new Error("Implement for each dex!")
     }
 
     async run() {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-            const new_pools = await this.propose_pools();
-            this.add(new_pools);
-            await this.update_static();
-            await this.update_dynamic();
-            await this.update(this.pools.filter((pool) => check_dynamic(pool)));
-        }
+        setInterval(this.propose_pools_and_add, this.config.propose_pools_timer_ms);
+        setInterval(this.update_static, this.config.static_upgrade_timer_ms);
+        setInterval(this.update_dynamic, this.config.dynamic_upgrade_timer_ms);
+        this.update().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STOPPED, (error as Error).message);});
     }
 }
