@@ -19,6 +19,11 @@ export enum Dex {
     Turbos = "Turbos"
 }
 
+export interface Tick {
+    tick_index: number, 
+    liquidity_net: bigint
+}
+
 export interface Pool {
     // required
     address: string,
@@ -27,6 +32,7 @@ export interface Pool {
     // static
     model?: Model, 
     coin_types?: string[],
+    pool_call_types?: string[],
     static_fee?: number // 100 * bps 
     //static_fee_multi?: {[coin_in_index: string]: {[coin_out_index: string]: number}},
     weights?: number[], // balancer
@@ -36,7 +42,7 @@ export interface Pool {
     // dynamic
     balances?: bigint[], // per coin_type, u64
     sqrt_price?: bigint, // u128, that is, X64
-    liquidity?: {tick_index: number, liquidity_net: bigint}[], // tick_index is I32 and fits in number, liquidity_net is I128
+    liquidity?: Tick[], // tick_index is I32 and fits in number, liquidity_net is I128
     orderbook?: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]},
 
     // meta
@@ -84,16 +90,16 @@ export function check_pool(pool: Pool): boolean {
 
 export function check_static(pool: Pool): boolean {
     if (pool.model == "UniswapV3") {
-        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.tick_spacing !== undefined)
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.pool_call_types !== undefined && pool.tick_spacing !== undefined)
     }
     else if (pool.model == "Amm" || pool.model == "Orderbook" || pool.model == "KriyaStable" || pool.model == "AftermathStable")  {
-        return (pool.coin_types !== undefined && pool.static_fee !== undefined)
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.pool_call_types !== undefined)
     }
     else if (pool.model == "StableAmm")  {
-        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.stable_amplification !== undefined)
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.pool_call_types !== undefined && pool.stable_amplification !== undefined)
     }
     else if (pool.model == "Balancer") {
-        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.weights !== undefined)
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.pool_call_types !== undefined && pool.weights !== undefined)
     }
     else {
         throw new Error(`Unrecognized model ${pool.model} for pool ${pool.address}`)

@@ -34,7 +34,7 @@ export class PoolManager {
 
     remove(address: string) {
         this.pools = this.pools.filter((pool) => pool.address != address)
-        logger(this.config.debug, LogLevel.DEBUG, LogTopic.REMOVE_POOL, `${address} removed`)
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.REMOVE_POOL, `${address}`)
     }
 
     update_coin_decimals(coins_decimals: {[coin_type: string]: number}) {
@@ -66,8 +66,15 @@ export class PoolManager {
     }
 
     async propose_pools_and_add() {
-        const new_pools = await this.propose_pools();
-        this.add(new_pools);
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.PROPOSE_POOLS, "START")
+        try {
+            const new_pools = await this.propose_pools();
+            this.add(new_pools);    
+        }
+        catch (error) {
+            logger(this.config.debug, LogLevel.ERROR, LogTopic.PROPOSE_POOLS, (error as Error).message);
+        }
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.PROPOSE_POOLS, "END")
     }
 
     async propose_pools(): Promise<Pool[]> {
@@ -128,10 +135,6 @@ export class PoolManager {
     // Returns the success value for each pool
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async upgrade_to_dynamic(pools: Pool[]) : Promise<boolean[]> {
-        throw new Error("Implement for each dex!")
-    }
-
-    filter_update(): Pool[] {
         throw new Error("Implement for each dex!")
     }
 

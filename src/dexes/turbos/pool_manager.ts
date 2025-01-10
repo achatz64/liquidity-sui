@@ -1,5 +1,7 @@
+import { logger, LogLevel, LogTopic } from "../../defs/logging";
 import { PoolManager, ConfigManager } from "../../defs/pool_manager";
-import { Dex } from "../../defs/pools";
+import { Dex, Model, Pool, Tick } from "../../defs/pools";
+import { sleep } from "../../utils";
 
 export interface ConfigManagerTurbos extends ConfigManager {
     dex: Dex.Turbos,
@@ -19,7 +21,7 @@ export class PoolManagerTurbos extends PoolManager {
 
     async call_turbos_pool_api(condition_for_pool: (pool_info: TurbosBasicPoolInfo) => boolean): Promise<TurbosBasicPoolInfo[]> {
         let stop_requesting_pages: boolean = false;
-        const page: number = 0;
+        let page: number = 0;
         const pools: TurbosBasicPoolInfo[] = [];
 
         while (stop_requesting_pages) {
@@ -38,11 +40,102 @@ export class PoolManagerTurbos extends PoolManager {
                 else {
                     new_pools.forEach((pool) => pools.push(pool));
                 }
+                page += 1;
             }
         }
         
         return pools;
     }
+
+    async call_turbos_liquidity_api(pool_address: string): Promise<TurbosTick[]> {
+        const response: TurbosTick[] = await (await fetch(`https://api.turbos.finance/pools/ticks?poolId=${pool_address}`, {
+            "headers": {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "api-version": "v2"
+            },
+            "body": null,
+            "method": "GET"
+        })).json();
+
+        return response
+    }
+
+    condition_for_pool(pool_info: TurbosBasicPoolInfo): boolean {
+        return pool_info.coin_a_liquidity_usd > this.config.threshold_pool_propose_liquidity_usd_each_coin && pool_info.coin_b_liquidity_usd > this.config.threshold_pool_propose_liquidity_usd_each_coin
+    }
+
+    parse_basic_pool_info(pool_info: TurbosBasicPoolInfo): Pool {
+        const pool: Pool = {
+            address: pool_info.pool_id, 
+            dex: this.config.dex, 
+            model: Model.UniswapV3, 
+            coin_types: [pool_info.coin_type_a, pool_info.coin_type_b],
+            pool_call_types: [pool_info.coin_type_a, pool_info.coin_type_b, pool_info.fee_type],
+            static_fee: Number(pool_info.fee),
+            tick_spacing: Number(pool_info.tick_spacing),
+            sqrt_price: BigInt(pool_info.sqrt_price)
+        };
+        
+        return pool;
+    }
+
+    async propose_pools(): Promise<Pool[]> {
+        const response = await this.call_turbos_pool_api(this.condition_for_pool);
+        const pools_proposed = response.map(this.parse_basic_pool_info);
+        const pools_proposed_addresses = pools_proposed.map((pool) => pool.address);
+        
+        // remove pools TODO: more rigid criteria
+        const old_pools_negative = this.pools.filter((pool) => !pools_proposed_addresses.includes(pool.address));
+        old_pools_negative.forEach(
+            (pool) => {
+                this.remove(pool.address);
+            }
+        )
+        
+        return pools_proposed
+    }
+
+    async upgrade_to_static(pools: Pool[]): Promise<boolean[]> {
+        // upgrade not implemented 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        return pools.map((_)=>false);
+    }
+
+    parse_turbos_liquidity(tick: TurbosTick): Tick {
+        return {tick_index: tick.index, liquidity_net: BigInt(tick.liquidity_net)}
+    } 
+
+    async upgrade_to_dynamic(pools: Pool[]): Promise<boolean[]> {
+        const status: boolean[] = [];
+        // assume sqrt_price is already init
+        for (const pool of pools) {
+            if (pool.sqrt_price !== undefined) {
+                const now = Date.now();
+                if (now - this.last_call_turbos_api < this.config.turbos_api_wait_ms) {
+                    await sleep(Math.min(Math.abs(now - this.last_call_turbos_api), this.config.turbos_api_wait_ms));
+                }    
+                try {
+                    const turbos_liquidity = await this.call_turbos_liquidity_api(pool.address);
+                    pool.liquidity = turbos_liquidity.map(this.parse_turbos_liquidity);
+                    pool.last_pull_ms = {time_ms: Date.now(), success: true, counter: 0};
+                    status.push(true);
+                    logger(this.config.debug, LogLevel.DEBUG, LogTopic.ADD_POOL, `${pool.address} added as pool.`)
+                }
+                catch (error) {
+                    logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, (error as Error).message);
+                    pool.last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: pool.last_dynamic_upgrade!.counter + 1};
+                    status.push(false);
+                }
+            }
+            else {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, `${pool.address} does not contain sqrt_price info and will not be upgraded`);
+                pool.last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: pool.last_dynamic_upgrade!.counter + 1};
+                status.push(false)
+            }
+        }
+        return status;
+    }   
 }
 
 interface TurbosBasicPoolInfo {
@@ -68,4 +161,15 @@ interface TurbosBasicPoolInfo {
 interface TurbosApiPoolsResponse {
     list: TurbosBasicPoolInfo[],
     total: number,
+}
+
+interface TurbosTick {
+    id: string, // tick address
+    index: number, 
+    initialized: boolean,
+    // the remaining attributes are ="0" if tick not initialized 
+    liquidity_net: string,
+    liquidity_gross: string,
+    fee_growth_outside_a: string,
+    fee_growth_outside_b: string,
 }

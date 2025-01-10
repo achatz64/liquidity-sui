@@ -1,7 +1,8 @@
 export enum LogLevel {
     ERROR = "ERROR",
     DEBUG = "DEBUG",
-    CRITICAL = "CRITICAL"
+    CRITICAL = "CRITICAL",
+    WORKFLOW = "WORKFLOW"
 }
 
 export enum LogTopic {
@@ -14,7 +15,9 @@ export enum LogTopic {
     STATIC_UPDATE = "STATIC_UPDATE",
     DYNAMIC_UPDATE = "DYNAMIC_UPDATE",
     ADD_POOL = "ADD_POOL",
-    REMOVE_POOL = "REMOVE_POOL"
+    REMOVE_POOL = "REMOVE_POOL",
+    PROPOSE_POOLS = "PROPOSE_POOLS",
+    LIQUIDITY_UPDATE = "LIQUIDITY_UPDATE"
 }
 
 export function logger(debug: boolean, log_level: LogLevel, topic: LogTopic, msg: string) {
