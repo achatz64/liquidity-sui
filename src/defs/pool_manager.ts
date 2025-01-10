@@ -1,5 +1,9 @@
 import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic } from "./pools"
 import { logger, LogLevel, LogTopic } from "./logging"
+import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
+import { fromBase64 } from '@mysten/sui/utils'
+import * as Fs from 'fs';
 
 export interface ConfigManager {
     dex: Dex,
@@ -148,5 +152,24 @@ export class PoolManager {
         setInterval(this.update_static, this.config.static_upgrade_timer_ms);
         setInterval(this.update_dynamic, this.config.dynamic_upgrade_timer_ms);
         this.update().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STOPPED, (error as Error).message);});
+    }
+}
+
+
+export interface ConfigManagerWithClient extends ConfigManager{
+    private_key_file_path: string // expecting Ed25519 schema, private key in base64 format
+}
+
+export class PoolManagerWithClient extends PoolManager {
+    config: ConfigManagerWithClient
+    keypair: Ed25519Keypair
+    client: SuiClient
+
+    constructor(config: ConfigManagerWithClient) {
+        super(config);
+        this.config = config;
+        const credentials = JSON.parse(Fs.readFileSync(this.config.private_key_file_path, 'utf-8')) as {'private_key': string};
+        this.keypair = Ed25519Keypair.fromSecretKey(fromBase64(credentials.private_key));
+        this.client = new SuiClient({ url: getFullnodeUrl("mainnet")});
     }
 }
