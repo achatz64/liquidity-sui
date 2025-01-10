@@ -17,16 +17,21 @@ export class PoolManager {
         this.pools = []
     }
 
-    add(pool: Pool) {
-        check_pool(pool);
-        add_workflow_elements(pool);
-        if (pool.dex == this.config.dex  && ! this.pools.map((pool) => pool.address).includes(pool.address) ) {
-            this.pools.push(pool);
+    add(pools: Pool[]) {
+        for (const pool of pools) {
+            if (check_pool(pool) && pool.dex == this.config.dex  && ! this.pools.map((pool) => pool.address).includes(pool.address)){
+                add_workflow_elements(pool);
+                this.pools.push(pool);       
+            }
+            else {
+                logger(this.config.debug, LogLevel.DEBUG, LogTopic.ADD_POOL, `${pool.address} Failed to add`)
+            }
         }
     }
 
     remove(address: string) {
         this.pools = this.pools.filter((pool) => pool.address != address)
+        logger(this.config.debug, LogLevel.DEBUG, LogTopic.REMOVE_POOL, `${address} removed`)
     }
 
     update_coin_decimals(coins_decimals: {[coin_type: string]: number}) {
@@ -55,6 +60,10 @@ export class PoolManager {
                 logger(this.config.debug, LogLevel.ERROR, LogTopic.TVL_UPDATE, `${pool.address} ${(error as Error).message}`)
             }
         }
+    }
+
+    async propose_pools(): Promise<Pool[]> {
+        throw new Error("Implement for each dex!")
     }
 
     async update_static() {
@@ -94,7 +103,12 @@ export class PoolManager {
                 }
             )
             const status = await this.upgrade_to_dynamic(non_dynamic_pools);
-            status.forEach((value, i) => non_dynamic_pools[i].last_dynamic_upgrade!.success = value);
+            status.forEach((value, i) => {
+                non_dynamic_pools[i].last_dynamic_upgrade!.success = value;
+                if (value) {
+                    non_dynamic_pools[i].last_pull_ms = {time_ms: Date.now(), success: true, counter: 0};
+                } 
+            });
         }
         catch (error) {
             logger(this.config.debug, LogLevel.ERROR, LogTopic.DYNAMIC_UPDATE, (error as Error).message)
@@ -119,6 +133,8 @@ export class PoolManager {
     async run() {
         // eslint-disable-next-line no-constant-condition
         while (true) {
+            const new_pools = await this.propose_pools();
+            this.add(new_pools);
             await this.update_static();
             await this.update_dynamic();
             await this.update(this.pools.filter((pool) => check_dynamic(pool)));

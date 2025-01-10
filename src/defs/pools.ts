@@ -23,9 +23,9 @@ export interface Pool {
     // required
     address: string,
     dex: Dex,
-    model: Model,
 
-    // static 
+    // static
+    model?: Model, 
     coin_types?: string[],
     static_fee?: number // 100 * bps 
     //static_fee_multi?: {[coin_in_index: string]: {[coin_out_index: string]: number}},
@@ -78,10 +78,8 @@ export interface PoolBalancer extends Pool {
     weights: number[], 
 }
 
-export function check_pool(pool: Pool) {
-    if (pool.address == undefined || pool.dex == undefined || pool.model == undefined) {
-        throw new Error("Undefined attributes");
-    }
+export function check_pool(pool: Pool): boolean {
+    return pool.address !== undefined && pool.dex !== undefined   
 }
 
 export function check_static(pool: Pool): boolean {

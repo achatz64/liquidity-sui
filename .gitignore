@@ -4,3 +4,4 @@ dist/
 *.log
 .eslintrc.json
 package-lock.json
+.vscode/
