@@ -17,7 +17,8 @@ export enum LogTopic {
     ADD_POOL = "ADD_POOL",
     REMOVE_POOL = "REMOVE_POOL",
     PROPOSE_POOLS = "PROPOSE_POOLS",
-    LIQUIDITY_UPDATE = "LIQUIDITY_UPDATE"
+    LIQUIDITY_UPDATE = "LIQUIDITY_UPDATE",
+    SUI_CLIENT = "SUI_CLIENT"
 }
 
 export function logger(debug: boolean, log_level: LogLevel, topic: LogTopic, msg: string) {

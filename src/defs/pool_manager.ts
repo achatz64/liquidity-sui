@@ -1,9 +1,11 @@
 import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic } from "./pools"
 import { logger, LogLevel, LogTopic } from "./logging"
 import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { fromBase64 } from '@mysten/sui/utils'
-import * as Fs from 'fs';
+//import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
+import { Transaction } from '@mysten/sui/transactions'
+import { wait_for_call } from "../utils"
+//import { fromBase64 } from '@mysten/sui/utils'
+//import * as Fs from 'fs';
 
 export interface ConfigManager {
     dex: Dex,
@@ -118,17 +120,15 @@ export class PoolManager {
             const now = Date.now();
             const non_dynamic_pools = this.pools.filter((pool) => !check_dynamic(pool) && (now - pool.last_dynamic_upgrade!.time_ms) > this.config.dynamic_upgrade_wait_time_ms);
        
-            non_dynamic_pools.forEach(
-                (pool) => {
-                    pool.last_dynamic_upgrade = {...pool.last_dynamic_upgrade!, time_ms: now, success: false}
-                }
-            )
             const status = await this.upgrade_to_dynamic(non_dynamic_pools);
             status.forEach((value, i) => {
                 non_dynamic_pools[i].last_dynamic_upgrade!.success = value;
                 if (value) {
-                    non_dynamic_pools[i].last_pull_ms = {time_ms: Date.now(), success: true, counter: 0};
+                    non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: true, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter};
                 } 
+                else {
+                    non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter + 1};
+                }
             });
         }
         catch (error) {
@@ -157,19 +157,38 @@ export class PoolManager {
 
 
 export interface ConfigManagerWithClient extends ConfigManager{
-    private_key_file_path: string // expecting Ed25519 schema, private key in base64 format
+    sui_rpc_wait_time_ms: number,
+    //private_key_file_path: string // expecting Ed25519 schema, private key in base64 format
+    sui_simulation_address: string
 }
 
 export class PoolManagerWithClient extends PoolManager {
     config: ConfigManagerWithClient
-    keypair: Ed25519Keypair
     client: SuiClient
+    address: string
+    last_sui_rpc_request_ms: number
 
     constructor(config: ConfigManagerWithClient) {
         super(config);
         this.config = config;
-        const credentials = JSON.parse(Fs.readFileSync(this.config.private_key_file_path, 'utf-8')) as {'private_key': string};
-        this.keypair = Ed25519Keypair.fromSecretKey(fromBase64(credentials.private_key));
         this.client = new SuiClient({ url: getFullnodeUrl("mainnet")});
+        this.last_sui_rpc_request_ms = 0;
+        this.address = config.sui_simulation_address;
     }
+
+    async simulateTransaction(tx: Transaction) {
+        await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
+        tx.setSenderIfNotSet(this.address)
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call tx.build")
+        const serialize = await tx.build({
+            client: this.client
+          })
+        const start = Date.now()/1000;
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call dryRunTransactionBlock")
+        const transactionResponse = await this.client.dryRunTransactionBlock({transactionBlock: serialize})
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call dryRunTransactionBlock took ${Date.now()/1000 - start} secs`);
+
+        return {receipt: {digest: ""}, transactionResponse}
+    }
+
 }

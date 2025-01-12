@@ -1,12 +1,13 @@
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
 import { PoolManager, ConfigManager } from "../../defs/pool_manager";
 import { Dex, Model, Pool, Tick } from "../../defs/pools";
-import { sleep } from "../../utils";
+import { wait_for_call } from "../../utils";
 
 export interface ConfigManagerTurbos extends ConfigManager {
     dex: Dex.Turbos,
     turbos_api_wait_ms: number,
     threshold_pool_propose_liquidity_usd_each_coin: number,
+    update_liquidity_ms: number
 }
 
 export class PoolManagerTurbos extends PoolManager {
@@ -106,36 +107,47 @@ export class PoolManagerTurbos extends PoolManager {
         return {tick_index: tick.index, liquidity_net: BigInt(tick.liquidity_net)}
     } 
 
+    async update_liquidity(pool: Pool): Promise<boolean> {
+        if (pool.sqrt_price !== undefined) {
+            await wait_for_call(this.last_call_turbos_api, this.config.turbos_api_wait_ms);
+            try {
+                const turbos_liquidity = await this.call_turbos_liquidity_api(pool.address);
+                pool.liquidity = turbos_liquidity.map(this.parse_turbos_liquidity);
+                pool.last_pull_ms = {time_ms: Date.now(), success: true, counter: 0};
+                return true;
+            }
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, (error as Error).message);
+                pool.last_pull_ms = {time_ms: Date.now(), success: false, counter: pool.last_pull_ms!.counter + 1};
+                return false;
+            }
+        }
+        else {
+            logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, `${pool.address} does not contain sqrt_price info and will not be upgraded`);
+            pool.last_pull_ms = {time_ms: Date.now(), success: false, counter: pool.last_pull_ms!.counter + 1};
+            return false;
+        }
+    }
+
     async upgrade_to_dynamic(pools: Pool[]): Promise<boolean[]> {
         const status: boolean[] = [];
         // assume sqrt_price is already init
         for (const pool of pools) {
-            if (pool.sqrt_price !== undefined) {
-                const now = Date.now();
-                if (now - this.last_call_turbos_api < this.config.turbos_api_wait_ms) {
-                    await sleep(Math.min(Math.abs(now - this.last_call_turbos_api), this.config.turbos_api_wait_ms));
-                }    
-                try {
-                    const turbos_liquidity = await this.call_turbos_liquidity_api(pool.address);
-                    pool.liquidity = turbos_liquidity.map(this.parse_turbos_liquidity);
-                    pool.last_pull_ms = {time_ms: Date.now(), success: true, counter: 0};
-                    status.push(true);
-                    logger(this.config.debug, LogLevel.DEBUG, LogTopic.ADD_POOL, `${pool.address} added as pool.`)
-                }
-                catch (error) {
-                    logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, (error as Error).message);
-                    pool.last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: pool.last_dynamic_upgrade!.counter + 1};
-                    status.push(false);
-                }
-            }
-            else {
-                logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, `${pool.address} does not contain sqrt_price info and will not be upgraded`);
-                pool.last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: pool.last_dynamic_upgrade!.counter + 1};
-                status.push(false)
+            const successful_liquidity_update = await this.update_liquidity(pool); 
+            status.push(successful_liquidity_update);
+            if (successful_liquidity_update) {
+                logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.ADD_POOL, `${pool.address} added as pool.`)
             }
         }
         return status;
     }   
+
+    async update(): Promise<void> {
+        if (this.pools.length > 0) {
+            const pool_with_oldest_update =  this.pools.sort((a, b) => a.last_pull_ms!.time_ms - b.last_pull_ms!.time_ms)[0];
+            this.update_liquidity(pool_with_oldest_update);
+        }
+    }
 }
 
 interface TurbosBasicPoolInfo {
