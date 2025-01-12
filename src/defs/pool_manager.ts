@@ -3,7 +3,7 @@ import { logger, LogLevel, LogTopic } from "./logging"
 import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
 //import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import { Transaction } from '@mysten/sui/transactions'
-import { wait_for_call } from "../utils"
+import { sleep, wait_for_call } from "../utils"
 //import { fromBase64 } from '@mysten/sui/utils'
 //import * as Fs from 'fs';
 
@@ -30,10 +30,13 @@ export class PoolManager {
         for (const pool of pools) {
             if (check_pool(pool) && pool.dex == this.config.dex  && ! this.pools.map((pool) => pool.address).includes(pool.address)){
                 add_workflow_elements(pool);
-                this.pools.push(pool);       
+                this.pools.push(pool);  
+                logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.ADD_POOL, `${pool.address} proposed`)     
             }
             else {
-                logger(this.config.debug, LogLevel.DEBUG, LogTopic.ADD_POOL, `${pool.address} Failed to add`)
+                if (!this.pools.map((pool) => pool.address).includes(pool.address)) {
+                    logger(this.config.debug, LogLevel.DEBUG, LogTopic.ADD_POOL, `${pool.address} Failed to add to list of pools`)
+                }
             }
         }
     }
@@ -72,15 +75,19 @@ export class PoolManager {
     }
 
     async propose_pools_and_add() {
-        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.PROPOSE_POOLS, "START")
-        try {
-            const new_pools = await this.propose_pools();
-            this.add(new_pools);    
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.PROPOSE_POOLS, "START")
+            try {
+                const new_pools = await this.propose_pools();
+                this.add(new_pools);    
+            }
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.PROPOSE_POOLS, (error as Error).message);
+            }
+            logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.PROPOSE_POOLS, "END")
+            await sleep(this.config.static_upgrade_timer_ms);
         }
-        catch (error) {
-            logger(this.config.debug, LogLevel.ERROR, LogTopic.PROPOSE_POOLS, (error as Error).message);
-        }
-        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.PROPOSE_POOLS, "END")
     }
 
     async propose_pools(): Promise<Pool[]> {
@@ -88,24 +95,28 @@ export class PoolManager {
     }
 
     async update_static() {
-        try {
-            const now = Date.now();
-            const non_static_pools = this.pools.filter((pool) => {
-                return !check_static(pool) && (now - pool.last_static_update!.time_ms) >= this.config.static_upgrade_wait_time_ms;
-            });
-            if (non_static_pools.length > 0) {
-            
-                non_static_pools.forEach(
-                    (pool) => {
-                        pool.last_static_update = {...pool.last_static_update!, time_ms: now, success: false}
-                    }
-                )
-                const status = await this.upgrade_to_static(non_static_pools);
-                status.forEach((value, i) => non_static_pools[i].last_static_update!.success = value);
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            try {
+                const now = Date.now();
+                const non_static_pools = this.pools.filter((pool) => {
+                    return !check_static(pool) && (now - pool.last_static_update!.time_ms) >= this.config.static_upgrade_wait_time_ms;
+                });
+                if (non_static_pools.length > 0) {
+                
+                    non_static_pools.forEach(
+                        (pool) => {
+                            pool.last_static_update = {...pool.last_static_update!, time_ms: now, success: false}
+                        }
+                    )
+                    const status = await this.upgrade_to_static(non_static_pools);
+                    status.forEach((value, i) => non_static_pools[i].last_static_update!.success = value);
+                }
             }
-        }
-        catch (error) {
-            logger(this.config.debug, LogLevel.ERROR, LogTopic.STATIC_UPDATE, (error as Error).message)
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.STATIC_UPDATE, (error as Error).message)
+            }
+            await sleep(this.config.static_upgrade_timer_ms)
         }
     }
 
@@ -116,23 +127,29 @@ export class PoolManager {
     }
 
     async update_dynamic() {
-        try {
-            const now = Date.now();
-            const non_dynamic_pools = this.pools.filter((pool) => !check_dynamic(pool) && (now - pool.last_dynamic_upgrade!.time_ms) > this.config.dynamic_upgrade_wait_time_ms);
-       
-            const status = await this.upgrade_to_dynamic(non_dynamic_pools);
-            status.forEach((value, i) => {
-                non_dynamic_pools[i].last_dynamic_upgrade!.success = value;
-                if (value) {
-                    non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: true, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter};
-                } 
-                else {
-                    non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter + 1};
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            try {
+                const now = Date.now();
+                const non_dynamic_pools = this.pools.filter((pool) => !check_dynamic(pool) && (now - pool.last_dynamic_upgrade!.time_ms) > this.config.dynamic_upgrade_wait_time_ms);
+                
+                if (non_dynamic_pools.length > 0){
+                    const status = await this.upgrade_to_dynamic(non_dynamic_pools);
+                    status.forEach((value, i) => {
+                        non_dynamic_pools[i].last_dynamic_upgrade!.success = value;
+                        if (value) {
+                            non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: true, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter};
+                        } 
+                        else {
+                            non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter + 1};
+                        }
+                    });
                 }
-            });
-        }
-        catch (error) {
-            logger(this.config.debug, LogLevel.ERROR, LogTopic.DYNAMIC_UPDATE, (error as Error).message)
+            }
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.DYNAMIC_UPDATE, (error as Error).message)
+            }
+            await sleep(this.config.dynamic_upgrade_timer_ms);
         }
     }
 
@@ -148,9 +165,9 @@ export class PoolManager {
     }
 
     async run() {
-        setInterval(this.propose_pools_and_add, this.config.propose_pools_timer_ms);
-        setInterval(this.update_static, this.config.static_upgrade_timer_ms);
-        setInterval(this.update_dynamic, this.config.dynamic_upgrade_timer_ms);
+        this.propose_pools_and_add().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.PROPOSE_POOLS_STOPPED, (error as Error).message);});
+        this.update_static().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STATIC_STOPPED, (error as Error).message);});
+        this.update_dynamic().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_DYNAMIC_STOPPED, (error as Error).message);});
         this.update().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STOPPED, (error as Error).message);});
     }
 }

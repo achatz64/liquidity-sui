@@ -52,7 +52,7 @@ export interface Pool {
     // workflow
     last_static_update?: {time_ms: number, success: boolean, counter: number}, 
     last_dynamic_upgrade?: {time_ms: number, success: boolean, counter: number}, 
-    last_pull_ms?: {time_ms: number, success: boolean, counter: number} 
+    last_pull?: {time_ms: number, success: boolean, counter: number} 
     last_swap_ms?: number
     last_liquidity_modification_ms?: number
 }
@@ -126,14 +126,12 @@ export function check_dynamic(pool: Pool): boolean {
     }
 }
 
-export function add_workflow_elements(pool: Pool): Pool {
-    return {...pool, 
-        last_pull_ms: {time_ms: 0, success: true, counter: 0}, 
-        last_swap_ms: 0, 
-        last_liquidity_modification_ms: 0, 
-        last_static_update: {time_ms: 0, success: false, counter: 0}, 
-        last_dynamic_upgrade: {time_ms: 0, success: false, counter: 0}
-    }
+export function add_workflow_elements(pool: Pool) {
+    pool.last_pull = {time_ms: 0, success: true, counter: 0};
+    pool.last_swap_ms = 0; 
+    pool.last_liquidity_modification_ms = 0; 
+    pool.last_static_update = {time_ms: 0, success: false, counter: 0}; 
+    pool.last_dynamic_upgrade = {time_ms: 0, success: false, counter: 0};
 }
 
 export function update_coin_decimals_per_pool(pool: Pool, coins_decimals: {[coin_type: string]: number})  {
