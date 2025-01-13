@@ -131,7 +131,7 @@ export class PoolManager {
         while (true) {
             try {
                 const now = Date.now();
-                const non_dynamic_pools = this.pools.filter((pool) => !check_dynamic(pool) && (now - pool.last_dynamic_upgrade!.time_ms) > this.config.dynamic_upgrade_wait_time_ms);
+                const non_dynamic_pools = this.pools.filter((pool) =>  check_static(pool) && !check_dynamic(pool) && (now - pool.last_dynamic_upgrade!.time_ms) > this.config.dynamic_upgrade_wait_time_ms);
                 
                 if (non_dynamic_pools.length > 0){
                     const status = await this.upgrade_to_dynamic(non_dynamic_pools);
@@ -139,9 +139,11 @@ export class PoolManager {
                         non_dynamic_pools[i].last_dynamic_upgrade!.success = value;
                         if (value) {
                             non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: true, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter};
+                            logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.ADD_POOL, `${non_dynamic_pools[i].address} liquidity initialized`); 
                         } 
                         else {
                             non_dynamic_pools[i].last_dynamic_upgrade = {time_ms: Date.now(), success: false, counter: non_dynamic_pools[i].last_dynamic_upgrade!.counter + 1};
+                            logger(this.config.debug, LogLevel.ERROR, LogTopic.ADD_POOL, `${non_dynamic_pools[i].address} liquidity initialization failed`);
                         }
                     });
                 }
@@ -203,7 +205,7 @@ export class PoolManagerWithClient extends PoolManager {
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call dryRunTransactionBlock")
         const transactionResponse = await this.client.dryRunTransactionBlock({transactionBlock: serialize})
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call dryRunTransactionBlock took ${Date.now()/1000 - start} secs`);
-
+        this.last_sui_rpc_request_ms = Date.now();
         return {receipt: {digest: ""}, transactionResponse}
     }
 

@@ -1,7 +1,7 @@
 import { cetus_liquidity } from "../../config/packages";
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
 import { PoolManagerWithClient, ConfigManagerWithClient  } from "../../defs/pool_manager";
-import { check_dynamic, check_static, Dex, Model, Pool, Tick } from "../../defs/pools";
+import { check_dynamic, Dex, Model, Pool, Tick } from "../../defs/pools";
 import { parseEvent, sleep, wait_for_call } from "../../utils";
 
 import { Transaction } from "@mysten/sui/transactions";
@@ -132,7 +132,7 @@ export class PoolManagerCetus extends PoolManagerWithClient {
     }
 
     async update_liquidity(pools: Pool[]): Promise<boolean> { 
-        await wait_for_call(this.last_call_cetus_api, this.config.cetus_api_wait_ms);
+        await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
         try {
             const cetus_liquidity = await this.create_liquidity_fetch_txn_and_simulate(pools);
             if (cetus_liquidity.length != pools.length) {
@@ -150,21 +150,27 @@ export class PoolManagerCetus extends PoolManagerWithClient {
     }
 
     async upgrade_to_dynamic(pools: Pool[]): Promise<boolean[]> {
-        // assume sqrt_price is already init
-        const pools_to_upgrade = this.pools.filter((pool) => check_static(pool) && !check_dynamic(pool));
-        const successful_liquidity_update = await this.update_liquidity(pools_to_upgrade); 
-        if (successful_liquidity_update) {
-            pools.forEach((pool) => {logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.ADD_POOL, `${pool.address} liquidity initialized`)})
-        }
+        let index = 0;
+        const status: boolean[] = [];
 
-        if (successful_liquidity_update) {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            return pools.map((_)=>true)
+        while (index < pools.length) {
+            const pools_to_upgrade = pools.slice(index, Math.min(index + this.config.pools_per_sui_liquidity_fetch_call, pools.length));    
+            const success_liquidity_update = await this.update_liquidity(pools_to_upgrade); 
+            if (success_liquidity_update) {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                pools_to_upgrade.forEach((_) => {
+                    status.push(success_liquidity_update)
+                })
+            }
+            else {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                pools_to_upgrade.forEach((_) => {
+                    status.push(success_liquidity_update)
+                })
+            }
+            index = index + this.config.pools_per_sui_liquidity_fetch_call
         }
-        else {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            return pools.map((_)=>false)
-        }
+        return status;
     } 
 
     async update(): Promise<void> {
@@ -175,7 +181,7 @@ export class PoolManagerCetus extends PoolManagerWithClient {
             if (pools.length > 0) {
                 const l = Math.min(pools.length, this.config.pools_per_sui_liquidity_fetch_call);
                 const pools_with_oldest_update =  pools.sort((a, b) => a.last_pull!.time_ms - b.last_pull!.time_ms).slice(0, l);
-                const pools_to_update = pools_with_oldest_update.filter((pool) => pool.last_pull!.time_ms > this.config.update_liquidity_ms)
+                const pools_to_update = pools_with_oldest_update.filter((pool) => (Date.now() - pool.last_pull!.time_ms) > this.config.update_liquidity_ms)
                 
                 if (pools_to_update.length > 0) {
                     const success = await this.update_liquidity(pools_to_update);
