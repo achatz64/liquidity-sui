@@ -175,7 +175,6 @@ export class PoolManager {
 
 export interface ConfigManagerWithClient extends ConfigManager{
     sui_rpc_wait_time_ms: number,
-    //private_key_file_path: string // expecting Ed25519 schema, private key in base64 format
     sui_simulation_address: string
 }
 

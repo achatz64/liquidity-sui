@@ -1,0 +1,1 @@
+export const cetus_liquidity = "0x4fbe59d114bdfb2066c5664933475286f184b6eb8c3f348ec8e91f60e565df15"
