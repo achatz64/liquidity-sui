@@ -28,7 +28,7 @@ async function call_pools() {
             const pool = response.filter((p) => p.objectId == address)[0];
             pool.stats = stats[j];
         });
-        sleep(1000);
+        await sleep(1000);
     }
     console.log(response);
 }
