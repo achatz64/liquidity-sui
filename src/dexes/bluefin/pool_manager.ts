@@ -1,83 +1,76 @@
-import { cetus_liquidity } from "../../config/packages";
+import { bluefin_liquidity } from "../../config/packages";
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
 import { PoolManagerWithClient, ConfigManagerWithClient  } from "../../defs/pool_manager";
 import { check_dynamic, Dex, Model, Pool, Tick } from "../../defs/pools";
-import { parse_event, sleep, wait_for_call } from "../../utils";
+import { liquidity_window_to_liquidity, parse_liquidity_window_event, sleep, wait_for_call } from "../../utils";
 
 import { Transaction } from "@mysten/sui/transactions";
 
 
-export interface ConfigManagerCetus extends ConfigManagerWithClient {
-    dex: Dex.Cetus,
-    cetus_api_wait_ms: number,
+export interface ConfigManagerBluefin extends ConfigManagerWithClient {
+    dex: Dex.Bluefin,
+    bluefin_api_wait_ms: number,
     threshold_liquidity_usd_for_pool: number,
     update_liquidity_ms: number,
-    pools_per_sui_liquidity_fetch_call: number
+    pools_per_sui_liquidity_fetch_call: number,
+    tick_window_size: number
 }
 
-export class PoolManagerCetus extends PoolManagerWithClient {
-    last_call_cetus_api: number
-    config: ConfigManagerCetus
-    constructor(config: ConfigManagerCetus) {
-        if (config.dex != Dex.Cetus) throw new Error(`${Dex.Cetus} manager called with ${config.dex} dex argument`)
+export class PoolManagerBluefin extends PoolManagerWithClient {
+    last_call_bluefin_api: number
+    config: ConfigManagerBluefin
+    constructor(config: ConfigManagerBluefin) {
+        if (config.dex != Dex.Bluefin) throw new Error(`${Dex.Bluefin} manager called with ${config.dex} dex argument`)
         super(config);
         this.config = config;
-        this.last_call_cetus_api = 0;
+        this.last_call_bluefin_api = 0;
     }
 
-    async call_cetus_pool_api(condition_for_pool: (pool_info: CetusBasicPoolInfo) => boolean): Promise<CetusBasicPoolInfo[]> {
-        let stop_requesting_pages: boolean = false;
-        let page: number = 1;
-        const pools: CetusBasicPoolInfo[] = [];
+    async call_bluefin_pool_api(condition_for_pool: (pool_info: BluefinBasicPoolInfo) => boolean): Promise<BluefinBasicPoolInfo[]> {
 
-        while (!stop_requesting_pages) {
-            if (Date.now()-this.last_call_cetus_api > this.config.cetus_api_wait_ms) {
-                const limit = 30;
-                const response: CetusApiPoolsResponse = await (await fetch(`https://api-sui.cetus.zone/v2/sui/stats_pools?is_vaults=false&display_all_pools=false&has_mining=true&has_farming=true&no_incentives=true&order_by=-vol&limit=${limit}&offset=${(page-1) * limit}`, {
+        const pools: BluefinBasicPoolInfo[] = [];
+
+        if (Date.now()-this.last_call_bluefin_api > this.config.bluefin_api_wait_ms) {
+            try {
+                const response: BluefinApiPoolsResponse = await (await fetch("https://swap.api.sui-prod.bluefin.io/api/v1/pools/info", {
                     "headers": {
-                      "accept": "*/*",
+                    "accept": "application/json, text/plain, */*",
                     },
                     "body": null,
                     "method": "GET"
-                  })).json();
-                this.last_call_cetus_api = Date.now();
-                if (response.code == 200) {
-                    logger(this.config.debug, LogLevel.DEBUG, LogTopic.PROPOSE_POOLS, `Read page ${page} of Cetus pools`)
-                    const new_pools = response.data.lp_list.filter(condition_for_pool);
-                    if (new_pools.length == 0) {stop_requesting_pages = true;}
-                    else {
-                        new_pools.forEach((pool) => pools.push(pool));
-                    }
-                    page += 1;    
-                }
-                else {
-                    logger(this.config.debug, LogLevel.ERROR, LogTopic.PROPOSE_POOLS, `Cetus API call failed with code ${response.code}: ${response.msg}`)
-                }
+                    })).json();
+                this.last_call_bluefin_api = Date.now();
+                logger(this.config.debug, LogLevel.DEBUG, LogTopic.PROPOSE_POOLS, `Read Bluefin pools`)
+                const new_pools = response.filter(condition_for_pool);
+                new_pools.forEach((pool) => pools.push(pool));
             }
-        }      
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.PROPOSE_POOLS, `Bluefin API call failed: ${(error as Error).message}`)
+            }
+        }    
         return pools;
     }
 
-    condition_for_pool(pool_info: CetusBasicPoolInfo): boolean {
-        return Number(pool_info.pure_tvl_in_usd) > this.config.threshold_liquidity_usd_for_pool
+    condition_for_pool(pool_info: BluefinBasicPoolInfo): boolean {
+        return Number(pool_info.tvl) > this.config.threshold_liquidity_usd_for_pool
     }
 
-    parse_basic_pool_info(pool_info: CetusBasicPoolInfo): Pool {
+    parse_basic_pool_info(pool_info: BluefinBasicPoolInfo): Pool {
         const pool: Pool = {
             address: pool_info.address, 
             dex: this.config.dex, 
             model: Model.UniswapV3, 
-            coin_types: [pool_info.coin_a_address, pool_info.coin_b_address],
-            pool_call_types: [pool_info.coin_a_address, pool_info.coin_b_address],
-            static_fee: Math.floor(Number(pool_info.fee) * 100 * 10000),
-            tick_spacing: pool_info.object.tick_spacing
+            coin_types: [pool_info.tokenA.info.address, pool_info.tokenB.info.address],
+            pool_call_types: [pool_info.tokenA.info.address, pool_info.tokenB.info.address],
+            static_fee: Math.floor(Number(pool_info.feeRate) * 10000),
+            tick_spacing: pool_info.config.tickSpacing
         };
         
         return pool;
     }
 
     async propose_pools(): Promise<Pool[]> {
-        const response = await this.call_cetus_pool_api((pool_info) => this.condition_for_pool(pool_info));
+        const response = await this.call_bluefin_pool_api((pool_info) => this.condition_for_pool(pool_info));
         const pools_proposed = response.map((pool_info) => this.parse_basic_pool_info(pool_info));
         const pools_proposed_addresses = pools_proposed.map((pool) => pool.address);
         
@@ -98,40 +91,48 @@ export class PoolManagerCetus extends PoolManagerWithClient {
         return pools.map((_)=>false);
     }
 
-    async create_liquidity_fetch_txn_and_simulate(pools: Pool[]): Promise<Tick[][]> {   
-        const package_id = cetus_liquidity; 
+    async create_liquidity_fetch_txn_and_simulate(pools: Pool[]): Promise<LiquidityWindow[]> {   
+        const package_id = bluefin_liquidity; 
         
         const tx = new Transaction();
         
         for (const pool of pools) {
             const liquidity_vector = tx.moveCall({
-                target: `${package_id}::liquidity::get_liquidity`,
-                arguments: [tx.object(pool.address)],
+                target: `${package_id}::liquidity::get_liquidity_window`,
+                arguments: [tx.object(pool.address), tx.pure.u32(this.config.tick_window_size)],
                 typeArguments: pool.coin_types!
             })
         
             tx.moveCall({
-                target: `${package_id}::liquidity::emit_single_ticks`,
+                target: `${package_id}::liquidity::emit_liquidity_window`,
                 arguments: [liquidity_vector[0]]
             })
         }
 
         const response = await this.simulateTransaction(tx) 
-        const liquidity_vectors = response.transactionResponse.events.map((event)=> {
-            const parsed = event.parsedJson as {'data': {index: {bits: string}, liquidity_net: {bits: string}}[]};
-            return parse_event(parsed.data)
+        const liquidity_windows: LiquidityWindow[] = response.transactionResponse.events.map((event)=> {
+            const parsed = event.parsedJson as {
+                current_liquidity: string,
+                current_tick: {bits: string},
+                tick_spacing: string,
+                window_size: string,
+                ticks: {index: {bits: string}, liquidity_net: {bits: string}}[]
+            };
+            return parse_liquidity_window_event(parsed)
         })
-        return liquidity_vectors
+        return liquidity_windows
     }
 
     async update_liquidity(pools: Pool[]): Promise<boolean> { 
         await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
         try {
-            const cetus_liquidity = await this.create_liquidity_fetch_txn_and_simulate(pools);
-            if (cetus_liquidity.length != pools.length) {
+            const bluefin_liquidity = await this.create_liquidity_fetch_txn_and_simulate(pools);
+            if (bluefin_liquidity.length != pools.length) {
                 throw new Error("Fetched liquidity does not match pools")
             }
-            cetus_liquidity.forEach((ticks, i)=> {pools[i].liquidity = ticks});
+            bluefin_liquidity.forEach((liquidity_window, i)=> {
+                pools[i].liquidity = liquidity_window_to_liquidity(liquidity_window);
+            });
             pools.forEach((pool) => {pool.last_pull = {time_ms: Date.now(), success: true, counter: 0};})
             return true;
         }
@@ -187,41 +188,34 @@ export class PoolManagerCetus extends PoolManagerWithClient {
     }
 }
 
-interface CetusCoinInfo {
-    name: string,
-    symbol: string,
-    decimals: number,
-    address: string, // coin type
-    balance: string,
-    logo_url: string,
-    coingecko_id: string,
-    project_url: string,
-    is_trusted: boolean,
-  }
-
-interface CetusBasicPoolInfo {
-    address: string, //pool address
-    coin_a: CetusCoinInfo // 
-    coin_a_address: string, // coin type 
-    coin_b: CetusCoinInfo, // 
-    coin_b_address: string, // coin type
-    fee: string, // float e.g. "0.0025"
-    pure_tvl_in_usd: string,
-    
-    // pool object fields
-    object: {
-        coin_a: number, // amount of token
-        coin_b: number, 
-        current_sqrt_price: string,
-        index: number,
-        liquidity: string,
-        tick_spacing: number
+interface BluefinCoinInfo {
+    amount: string, // amount token
+    info: {
+        address: string, // coin type
+        decimals: 6,
+        isVerified: boolean,
     }
 }
 
-interface CetusApiPoolsResponse {
-    code: number,
-    msg: string,
-    data: {total: number, lp_list: CetusBasicPoolInfo[]}   
+interface BluefinBasicPoolInfo {
+    address: string,
+    config: {
+        tickSpacing: number,
+    },
+    feeRate: string, // in percent 
+    symbol: string,
+    tokenA: BluefinCoinInfo,
+    tokenB: BluefinCoinInfo,
+    tvl: string, // in USD
+    verified: boolean
 }
 
+type BluefinApiPoolsResponse = BluefinBasicPoolInfo[]
+
+export interface LiquidityWindow {
+    current_liquidity: bigint,
+    current_tick: number,
+    tick_spacing: number,
+    window_size: number, 
+    ticks: Tick[]
+}

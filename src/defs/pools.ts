@@ -41,7 +41,6 @@ export interface Pool {
     
     // dynamic
     balances?: bigint[], // per coin_type, u64
-    sqrt_price?: bigint, // u128, that is, X64
     liquidity?: Tick[], // tick_index is I32 and fits in number, liquidity_net is I128
     orderbook?: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]},
 
@@ -110,7 +109,7 @@ export function check_dynamic(pool: Pool): boolean {
     const check_for_static =  check_static(pool);
 
     if (pool.model == "UniswapV3") {
-        return check_for_static && (pool.sqrt_price !== undefined && pool.liquidity !== undefined)
+        return check_for_static && pool.liquidity !== undefined
     }
     else if (pool.model == "Amm" || pool.model == "StableAmm" || pool.model == "KriyaStable" || pool.model == "AftermathStable")  {
         return check_for_static &&  (pool.balances !== undefined)
