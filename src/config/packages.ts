@@ -1,2 +1,3 @@
 export const cetus_liquidity = "0x4fbe59d114bdfb2066c5664933475286f184b6eb8c3f348ec8e91f60e565df15"
 export const bluefin_liquidity = "0xb6e1bab86b09e9f837a0273cf7a6e5f202981bef91e7dc6522396e4749aec15c"
+export const kriya_liquidity = "0x7b737bbb0ec7b88f2324baf9a9d92f96020752b6c051239744586e69fb719c5d"

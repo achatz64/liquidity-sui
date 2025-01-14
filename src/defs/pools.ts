@@ -40,11 +40,11 @@ export interface Pool {
     tick_spacing?: number,
     
     // dynamic
-    balances?: bigint[], // per coin_type, u64
     liquidity?: Tick[], // tick_index is I32 and fits in number, liquidity_net is I128
     orderbook?: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]},
 
     // meta
+    stats_balances?: bigint[], // per coin_type, u64
     tvl?: number // in usdc
     coin_decimals?: number[] // decimals of coin_types
 
@@ -112,13 +112,13 @@ export function check_dynamic(pool: Pool): boolean {
         return check_for_static && pool.liquidity !== undefined
     }
     else if (pool.model == "Amm" || pool.model == "StableAmm" || pool.model == "KriyaStable" || pool.model == "AftermathStable")  {
-        return check_for_static &&  (pool.balances !== undefined)
+        return check_for_static 
     }
     else if (pool.model == "Orderbook")  {
         return check_for_static &&  (pool.orderbook !== undefined)
     }
     else if (pool.model == "Balancer") {
-        return check_for_static &&  (pool.weights !== undefined && pool.balances != undefined) 
+        return check_for_static &&  (pool.weights !== undefined) 
     }
     else {
         throw new Error(`Unrecognized model ${pool.model} for pool ${pool.address}`)

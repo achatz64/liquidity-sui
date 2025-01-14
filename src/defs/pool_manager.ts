@@ -60,10 +60,10 @@ export class PoolManager {
     update_tvl(coins_prices: {[coin_type: string]: number}) {
         for (const pool of this.pools) {
             try {
-                if (pool.balances !== undefined && pool.coin_decimals !== undefined && pool.coin_types !== undefined) {
+                if (pool.stats_balances !== undefined && pool.coin_decimals !== undefined && pool.coin_types !== undefined) {
                     const coin_prices = pool.coin_types.map((t) => coins_prices[t]);
                     if (coin_prices.filter((price) => price == undefined).length == 0) {
-                        const tvl = pool.coin_types!.map((t, i) => (Number(pool.balances![i])/10**pool.coin_decimals![i]) * coins_prices[t]).reduce((p, c) => p+c, 0)
+                        const tvl = pool.coin_types!.map((t, i) => (Number(pool.stats_balances![i])/10**pool.coin_decimals![i]) * coins_prices[t]).reduce((p, c) => p+c, 0)
                         pool.tvl = tvl    
                     }
                 }    
