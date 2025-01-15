@@ -133,6 +133,40 @@ export function add_workflow_elements(pool: Pool) {
     pool.last_dynamic_upgrade = {time_ms: 0, success: false, counter: 0};
 }
 
+export function to_essential_json(pool: Pool): {
+        address: string,
+        dex: Dex,
+
+        model?: Model, 
+        coin_types?: string[],
+        pool_call_types?: string[],
+        static_fee?: number, // 100 * bps 
+        stable_amplification?: number,
+        tick_spacing?: number,
+        
+        // dynamic
+        liquidity?: {tick_index: number, liquidity_net: string}[], 
+        orderbook?: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]}
+    } {
+    return {
+        address: pool.address,
+        dex: pool.dex,
+
+        model: pool.model, 
+        coin_types: pool.coin_types,
+        pool_call_types: pool.coin_types,
+        static_fee: pool.static_fee, // 100 * bps 
+        stable_amplification: pool.stable_amplification,
+        tick_spacing: pool.tick_spacing,
+        
+        // dynamic
+        liquidity: pool.liquidity?.map((tick) => {
+            return {tick_index: tick.tick_index, liquidity_net: tick.liquidity_net.toString()}
+        }), 
+        orderbook: pool.orderbook
+    }
+}
+
 export function update_coin_decimals_per_pool(pool: Pool, coins_decimals: {[coin_type: string]: number})  {
     if (check_static(pool)) {
         const coin_decimals = pool.coin_types!.map((t) => coins_decimals[t]);

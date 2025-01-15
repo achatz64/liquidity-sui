@@ -13,6 +13,7 @@ const example_config_aftermath: ConfigManagerAftermath = {
     dynamic_upgrade_wait_time_ms: 10 * 1000,
     sui_rpc_wait_time_ms: 2 * 1000,
     sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4",
+    collector_delivery_every_ms: 1000 
 }
 
 const pool_manager = new PoolManagerAftermath(example_config_aftermath);

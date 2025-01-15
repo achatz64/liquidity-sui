@@ -1,11 +1,11 @@
-import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic } from "./pools"
+import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic, to_essential_json } from "./pools"
 import { logger, LogLevel, LogTopic } from "./logging"
-import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
-//import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { Transaction } from '@mysten/sui/transactions'
 import { sleep, wait_for_call } from "../utils"
-//import { fromBase64 } from '@mysten/sui/utils'
-//import * as Fs from 'fs';
+
+// external
+import * as http from 'http';
+import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
+import { Transaction } from '@mysten/sui/transactions'
 
 export interface ConfigManager {
     dex: Dex,
@@ -14,16 +14,23 @@ export interface ConfigManager {
     static_upgrade_wait_time_ms: number,
     static_upgrade_timer_ms: number
     dynamic_upgrade_wait_time_ms: number,
-    dynamic_upgrade_timer_ms: number
+    dynamic_upgrade_timer_ms: number,
+    collector_url?: string,
+    collector_delivery_every_ms: number,
+    server_port?: number
 }
 
 export class PoolManager {
     config: ConfigManager;
     pools: Pool[];
+    state_delivery: {data: string, timestamp: number}
+    status_delivery: boolean;
 
     constructor(config: ConfigManager) {
         this.config = config
         this.pools = []
+        this.status_delivery = true
+        this.state_delivery = {data: JSON.stringify(this.pools), timestamp: Date.now()}
     }
 
     add(pools: Pool[]) {
@@ -72,6 +79,33 @@ export class PoolManager {
                 logger(this.config.debug, LogLevel.ERROR, LogTopic.TVL_UPDATE, `${pool.address} ${(error as Error).message}`)
             }
         }
+    }
+
+    create_server(): http.Server {
+        const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+            const { method } = req;
+    
+            try {
+                if (method === 'GET') {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(this.state_delivery));
+                } else {
+                    throw new Error(`Request method ${method} not supported`);
+                }
+            } catch (error) {
+                this.handleError(res, error);
+            }
+        });
+    
+        return server;
+    }
+    
+    private handleError(res: http.ServerResponse, error: unknown): void {
+        const errorMessage = (error instanceof Error) ? error.message : 'Unknown error';
+        logger(this.config.debug, LogLevel.ERROR, LogTopic.SERVER_REQUEST, errorMessage);
+    
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Server Error');
     }
 
     async propose_pools_and_add() {
@@ -155,6 +189,42 @@ export class PoolManager {
         }
     }
 
+    async update_state_and_deliver() {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            const complete_pools = this.pools.filter((pool)=>check_dynamic(pool));
+            const state = JSON.stringify(complete_pools.map((pool) => to_essential_json(pool)))
+            if (state != this.state_delivery.data) {
+                this.state_delivery = {
+                    data: state,
+                    timestamp: Date.now()
+                }
+                this.status_delivery = false
+            }
+            if (!this.status_delivery) {
+                if (this.config.collector_url !== undefined && this.config.collector_url !== "") {
+                    const request = await 
+                        fetch(this.config.collector_url, {
+                            "headers": {
+                                "accept": "*/*",
+                            },
+                            "body": JSON.stringify(this.state_delivery),
+                            "method": "POST"
+                        })
+                    if (request.status == 200) {
+                        this.status_delivery = true
+                        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.COLLECTOR_DELIVERY, "successful");
+                    } 
+                    else {
+                        this.status_delivery = false
+                        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.COLLECTOR_DELIVERY, `${request.status} ${request.statusText}`);
+                    }
+                } 
+            }
+            await sleep(this.config.collector_delivery_every_ms);
+        }
+    }
+
     // Returns the success value for each pool
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async upgrade_to_dynamic(pools: Pool[]) : Promise<boolean[]> {
@@ -171,6 +241,21 @@ export class PoolManager {
         this.update_static().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STATIC_STOPPED, (error as Error).message);});
         this.update_dynamic().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_DYNAMIC_STOPPED, (error as Error).message);});
         this.update().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STOPPED, (error as Error).message);});
+        this.update_state_and_deliver().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.COLLECTOR_DELIVERY, (error as Error).message);});
+        
+        if (this.config.server_port) {
+            const server = this.create_server();
+
+            server.listen(this.config.server_port, () => {
+                logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SERVER, 
+                    `Server running at http://localhost:${this.config.server_port}/`);
+            });
+        
+            server.on('error', (error: NodeJS.ErrnoException) => {
+                logger(this.config.debug, LogLevel.CRITICAL, LogTopic.SERVER, 
+                    `Server stopped. ${error.message}`);
+            });
+        }
     }
 }
 

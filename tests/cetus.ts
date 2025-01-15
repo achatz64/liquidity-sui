@@ -14,7 +14,9 @@ const example_config_cetus: ConfigManagerCetus = {
     dynamic_upgrade_wait_time_ms: 360 * 1000,
     pools_per_sui_liquidity_fetch_call: 2,
     sui_rpc_wait_time_ms: 2 * 1000,
-    sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4"
+    sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4",
+    collector_delivery_every_ms: 1000,
+    server_port: 6001
 }
 
 const pool_manager = new PoolManagerCetus(example_config_cetus);

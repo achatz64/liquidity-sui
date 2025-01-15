@@ -11,7 +11,8 @@ const example_config_turbos: ConfigManagerTurbos = {
     static_upgrade_timer_ms: 600 * 1000, // plays no role
     static_upgrade_wait_time_ms: 600 * 1000, // plays no role 
     dynamic_upgrade_timer_ms: 60 * 1000,
-    dynamic_upgrade_wait_time_ms: 360 * 1000 
+    dynamic_upgrade_wait_time_ms: 360 * 1000,
+    collector_delivery_every_ms: 1000 
 }
 
 const pool_manager = new PoolManagerTurbos(example_config_turbos);

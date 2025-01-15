@@ -15,7 +15,8 @@ const example_config_bluefin: ConfigManagerBluefin = {
     pools_per_sui_liquidity_fetch_call: 3,
     sui_rpc_wait_time_ms: 2 * 1000,
     sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4",
-    tick_window_size: 30
+    tick_window_size: 30,
+    collector_delivery_every_ms: 1000 
 }
 
 const pool_manager = new PoolManagerBluefin(example_config_bluefin);
