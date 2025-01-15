@@ -203,23 +203,28 @@ export class PoolManager {
                 this.status_delivery = false
             }
             if (!this.status_delivery) {
-                if (this.config.collector_url !== undefined && this.config.collector_url !== "") {
-                    const request = await 
-                        fetch(this.config.collector_url, {
-                            "headers": {
-                                "accept": "*/*",
-                            },
-                            "body": JSON.stringify(this.state_delivery),
-                            "method": "POST"
-                        })
-                    if (request.status == 200) {
-                        this.status_delivery = true
-                        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.COLLECTOR_DELIVERY, "successful");
-                    } 
-                    else {
-                        this.status_delivery = false
-                        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.COLLECTOR_DELIVERY, `${request.status} ${request.statusText}`);
+                try {
+                    if (this.config.collector_url !== undefined && this.config.collector_url !== "") {
+                        const request = await 
+                            fetch(this.config.collector_url, {
+                                "headers": {
+                                    "accept": "*/*",
+                                },
+                                "body": JSON.stringify(this.state_delivery),
+                                "method": "POST"
+                            })
+                        if (request.status == 200) {
+                            this.status_delivery = true
+                            logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.COLLECTOR_DELIVERY, "successful");
+                        } 
+                        else {
+                            this.status_delivery = false
+                            logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.COLLECTOR_DELIVERY, `${request.status} ${request.statusText}`);
+                        }
                     }
+                }
+                catch (error) {
+                    logger(this.config.debug, LogLevel.ERROR, LogTopic.COLLECTOR_DELIVERY, `${(error as Error).message}`);
                 } 
             }
             await sleep(this.config.collector_delivery_every_ms);

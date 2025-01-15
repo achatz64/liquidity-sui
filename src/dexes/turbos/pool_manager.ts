@@ -77,7 +77,6 @@ export class PoolManagerTurbos extends PoolManager {
             pool_call_types: [pool_info.coin_type_a, pool_info.coin_type_b, pool_info.fee_type],
             static_fee: Number(pool_info.fee),
             tick_spacing: Number(pool_info.tick_spacing),
-            sqrt_price: BigInt(pool_info.sqrt_price)
         };
         
         return pool;
@@ -109,23 +108,16 @@ export class PoolManagerTurbos extends PoolManager {
         return {tick_index: tick.index, liquidity_net: BigInt(tick.liquidity_net)}
     } 
 
-    async update_liquidity(pool: Pool): Promise<boolean> {
-        if (pool.sqrt_price !== undefined) {
-            await wait_for_call(this.last_call_turbos_api, this.config.turbos_api_wait_ms);
-            try {
-                const turbos_liquidity = await this.call_turbos_liquidity_api(pool.address);
-                pool.liquidity = turbos_liquidity.map(this.parse_turbos_liquidity);
-                pool.last_pull = {time_ms: Date.now(), success: true, counter: 0};
-                return true;
-            }
-            catch (error) {
-                logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, (error as Error).message);
-                pool.last_pull = {time_ms: Date.now(), success: false, counter: pool.last_pull!.counter + 1};
-                return false;
-            }
+    async update_liquidity(pool: Pool): Promise<boolean> {     
+        await wait_for_call(this.last_call_turbos_api, this.config.turbos_api_wait_ms);
+        try {
+            const turbos_liquidity = await this.call_turbos_liquidity_api(pool.address);
+            pool.liquidity = turbos_liquidity.map(this.parse_turbos_liquidity);
+            pool.last_pull = {time_ms: Date.now(), success: true, counter: 0};
+            return true;
         }
-        else {
-            logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, `${pool.address} does not contain sqrt_price info and will not be upgraded`);
+        catch (error) {
+            logger(this.config.debug, LogLevel.ERROR, LogTopic.LIQUIDITY_UPDATE, (error as Error).message);
             pool.last_pull = {time_ms: Date.now(), success: false, counter: pool.last_pull!.counter + 1};
             return false;
         }
