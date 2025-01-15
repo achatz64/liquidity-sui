@@ -16,7 +16,9 @@ const example_config_kriya: ConfigManagerKriya = {
     sui_rpc_wait_time_ms: 5 * 1000,
     sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4",
     tick_window_size: 30,
-    collector_delivery_every_ms: 1000 
+    collector_delivery_every_ms: 1000,
+    collector_url: "http://localhost:7001/delivery",
+    server_port: 6005 
 }
 
 const pool_manager = new PoolManagerKriya(example_config_kriya);

@@ -13,7 +13,7 @@ const example_config_turbos: ConfigManagerTurbos = {
     dynamic_upgrade_timer_ms: 10 * 1000,
     dynamic_upgrade_wait_time_ms: 360 * 1000,
     collector_delivery_every_ms: 1000,
-    //collector_url: "http://localhost:7001/delivery",
+    collector_url: "http://localhost:7001/delivery",
     server_port: 6004 
 }
 
