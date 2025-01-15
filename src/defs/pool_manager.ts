@@ -23,14 +23,14 @@ export interface ConfigManager {
 export class PoolManager {
     config: ConfigManager;
     pools: Pool[];
-    state_delivery: {data: string, timestamp: number}
+    state_delivery: {data: string, timestamp: number, dex: Dex}
     status_delivery: boolean;
 
     constructor(config: ConfigManager) {
         this.config = config
         this.pools = []
         this.status_delivery = true
-        this.state_delivery = {data: JSON.stringify(this.pools), timestamp: Date.now()}
+        this.state_delivery = {data: JSON.stringify(this.pools), timestamp: Date.now(), dex: config.dex}
     }
 
     add(pools: Pool[]) {
@@ -197,7 +197,8 @@ export class PoolManager {
             if (state != this.state_delivery.data) {
                 this.state_delivery = {
                     data: state,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    dex: this.config.dex
                 }
                 this.status_delivery = false
             }
