@@ -145,7 +145,7 @@ export function to_essential_json(pool: Pool): {
         tick_spacing?: number,
         
         // dynamic
-        liquidity?: {tick_index: number, liquidity_net: string}[], 
+        liquidity?: [number, string][], 
         orderbook?: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]}
     } {
     return {
@@ -161,7 +161,7 @@ export function to_essential_json(pool: Pool): {
         
         // dynamic
         liquidity: pool.liquidity?.map((tick) => {
-            return {tick_index: tick.tick_index, liquidity_net: tick.liquidity_net.toString()}
+            return [tick.tick_index, tick.liquidity_net.toString()]
         }), 
         orderbook: pool.orderbook
     }
