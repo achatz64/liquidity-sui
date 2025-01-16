@@ -1,16 +1,17 @@
+import { SuiObjectResponse } from "@mysten/sui/dist/cjs/client";
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
-import { PoolManager, ConfigManager } from "../../defs/pool_manager";
+import { ConfigManagerWithClient, PoolManagerWithClient, ParsedSuiObjectInfo } from "../../defs/pool_manager";
 import { check_dynamic, Dex, Model, Pool, Tick } from "../../defs/pools";
-import { sleep, wait_for_call } from "../../utils";
+import { sleep, wait_for_call, to_signed_i32 } from "../../utils";
 
-export interface ConfigManagerTurbos extends ConfigManager {
+export interface ConfigManagerTurbos extends ConfigManagerWithClient {
     dex: Dex.Turbos,
     turbos_api_wait_ms: number,
     threshold_pool_propose_liquidity_usd_each_coin: number,
     update_liquidity_ms: number
 }
 
-export class PoolManagerTurbos extends PoolManager {
+export class PoolManagerTurbos extends PoolManagerWithClient {
     last_call_turbos_api: number
     config: ConfigManagerTurbos;
     constructor(config: ConfigManagerTurbos) {
@@ -150,6 +151,31 @@ export class PoolManagerTurbos extends PoolManager {
                     }
                 }
             }    
+        }
+    }
+
+    parse_object(sui_object: SuiObjectResponse): ParsedSuiObjectInfo {
+        const address = sui_object.data?.objectId;
+        const content = sui_object.data!.content as unknown as {
+            fields: {
+                coin_a: string,
+                coin_b: string,
+                liquidity: string,
+                fee: number, 
+                sqrt_price: string,
+                tick_current_index: {
+                    type: string,
+                    fields: {
+                        bits: number
+                    }
+                }
+            } 
+        };
+        const liquidity = BigInt(content.fields.liquidity);
+        const sqrt_price = BigInt(content.fields.sqrt_price); 
+        const current_tick_index = to_signed_i32({bits: content.fields.tick_current_index.fields.bits.toString()})
+        return {
+            address, liquidity, current_tick_index, sqrt_price
         }
     }
 }

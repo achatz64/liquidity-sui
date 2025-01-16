@@ -14,7 +14,11 @@ const example_config_turbos: ConfigManagerTurbos = {
     dynamic_upgrade_wait_time_ms: 360 * 1000,
     collector_delivery_every_ms: 1000,
     collector_url: "http://localhost:7001/delivery",
-    server_port: 6004 
+    server_port: 6004,
+    sui_rpc_wait_time_ms: 3 * 1000,
+    sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4",
+    liquidity_test_every_ms: 20 * 1000,
+    test_liquidity_limit_failed: 3
 }
 
 const pool_manager = new PoolManagerTurbos(example_config_turbos);

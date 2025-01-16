@@ -1,10 +1,10 @@
-import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic, to_essential_json } from "./pools"
+import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic, to_essential_json, Model } from "./pools"
 import { logger, LogLevel, LogTopic } from "./logging"
 import { sleep, wait_for_call } from "../utils"
 
 // external
 import * as http from 'http';
-import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
+import { getFullnodeUrl, SuiClient, SuiObjectResponse } from '@mysten/sui/client'
 import { Transaction } from '@mysten/sui/transactions'
 
 export interface ConfigManager {
@@ -192,7 +192,7 @@ export class PoolManager {
     async update_state_and_deliver() {
         // eslint-disable-next-line no-constant-condition
         while (true) {
-            const complete_pools = this.pools.filter((pool)=>check_dynamic(pool));
+            const complete_pools = this.pools.filter((pool)=> check_dynamic(pool) && this.test_liquidity_passed(pool));
             const state = JSON.stringify(complete_pools.map((pool) => to_essential_json(pool)))
             if (state != this.state_delivery.data) {
                 this.state_delivery = {
@@ -231,6 +231,11 @@ export class PoolManager {
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    test_liquidity_passed(pool: Pool): boolean {
+       return true // implement in class extensions
+    }
+
     // Returns the success value for each pool
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async upgrade_to_dynamic(pools: Pool[]) : Promise<boolean[]> {
@@ -242,33 +247,15 @@ export class PoolManager {
         throw new Error("Implement for each dex!")
     }
 
-    async run() {
-        this.propose_pools_and_add().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.PROPOSE_POOLS_STOPPED, (error as Error).message);});
-        this.update_static().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STATIC_STOPPED, (error as Error).message);});
-        this.update_dynamic().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_DYNAMIC_STOPPED, (error as Error).message);});
-        this.update().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STOPPED, (error as Error).message);});
-        this.update_state_and_deliver().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.COLLECTOR_DELIVERY, (error as Error).message);});
-        
-        if (this.config.server_port) {
-            const server = this.create_server();
-
-            server.listen(this.config.server_port, () => {
-                logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SERVER, 
-                    `Server running at http://localhost:${this.config.server_port}/`);
-            });
-        
-            server.on('error', (error: NodeJS.ErrnoException) => {
-                logger(this.config.debug, LogLevel.CRITICAL, LogTopic.SERVER, 
-                    `Server stopped. ${error.message}`);
-            });
-        }
-    }
 }
 
 
 export interface ConfigManagerWithClient extends ConfigManager{
     sui_rpc_wait_time_ms: number,
-    sui_simulation_address: string
+    sui_simulation_address: string,
+    liquidity_test_every_ms?: number,
+    limit_objects_pre_sui_call?: number,
+    test_liquidity_limit_failed?: number 
 }
 
 export class PoolManagerWithClient extends PoolManager {
@@ -276,6 +263,7 @@ export class PoolManagerWithClient extends PoolManager {
     client: SuiClient
     address: string
     last_sui_rpc_request_ms: number
+    failed_test_pools: {address: string, counter: number, test_name: TestNames}[]
 
     constructor(config: ConfigManagerWithClient) {
         super(config);
@@ -283,6 +271,13 @@ export class PoolManagerWithClient extends PoolManager {
         this.client = new SuiClient({ url: getFullnodeUrl("mainnet")});
         this.last_sui_rpc_request_ms = 0;
         this.address = config.sui_simulation_address;
+        if (this.config.limit_objects_pre_sui_call === undefined) {
+            this.config.limit_objects_pre_sui_call = 30;
+        }
+        if (this.config.test_liquidity_limit_failed === undefined) {
+            this.config.test_liquidity_limit_failed = 10
+        }
+        this.failed_test_pools = [];
     }
 
     async simulateTransaction(tx: Transaction) {
@@ -300,4 +295,160 @@ export class PoolManagerWithClient extends PoolManager {
         return {receipt: {digest: ""}, transactionResponse}
     }
 
+    async test_liquidity() { 
+        const in_scope = this.pools.filter((p) => check_dynamic(p) && p.model == Model.UniswapV3);
+        
+        // remove removed pools
+        this.failed_test_pools = this.failed_test_pools.filter((p) => in_scope.find((pool) => pool.address == p.address) !== undefined);
+
+        const l = in_scope.length; 
+        if (l>0) {
+            // always add the failed pools
+            const test_indices = this.failed_test_pools.filter((p) => p.test_name == TestNames.LIQUIDITY).map((p) => in_scope.findIndex((pool) => pool.address == p.address));
+
+            if (test_indices.length >= this.config.limit_objects_pre_sui_call!) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.TEST_LIQUIDITY, "All test spots taken by failed pools");
+            }
+
+            while (test_indices.length < Math.min(this.config.limit_objects_pre_sui_call!, l)) {
+                const j = Math.floor(Math.random() * l)
+                if (!test_indices.includes(j)) {
+                    test_indices.push(j)
+                }
+            }
+            try {
+                const test_pools_liquidity = test_indices.map((i) => {return {
+                    address: in_scope[i].address, 
+                    liquidity: in_scope[i].liquidity!,
+                    tick_spacing: in_scope[i].tick_spacing!
+                }});
+
+                // fetch objects
+                await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
+                const sui_objects = await this.client.multiGetObjects({ids: test_pools_liquidity.map((p) => p.address), options: {"showContent": true}})
+                this.last_sui_rpc_request_ms = Date.now();
+
+                logger(this.config.debug, LogLevel.DEBUG, LogTopic.TEST_LIQUIDITY, `Testing ${test_pools_liquidity.length} pools including ${this.failed_test_pools.filter((p) => p.test_name == TestNames.LIQUIDITY).length} previously failed pools`);
+
+                test_pools_liquidity.forEach((p, i) => {
+                    const object_info = this.parse_object(sui_objects[i]);
+                    const predicted_liquidity_below = p.liquidity.filter((t) => t.tick_index <= object_info.current_tick_index).reduce((p, c) => p + c.liquidity_net, BigInt(0))
+                    const predicted_liquidity_above = - p.liquidity.filter((t) => t.tick_index > object_info.current_tick_index).reduce((p, c) => p + c.liquidity_net, BigInt(0))
+                    if (predicted_liquidity_below != object_info.liquidity || predicted_liquidity_above != object_info.liquidity) {
+                        if (object_info.liquidity == BigInt(0)) {
+                            logger(this.config.debug, LogLevel.DEBUG, LogTopic.FAILED_TEST_LIQUIDITY, `${p.address} predicted: ${predicted_liquidity_above} / ${predicted_liquidity_below} object: 0`) 
+                            this.add_test_failure(p.address, TestNames.LIQUIDITY);
+                        }
+                        else {
+                            const in_percent = Math.max(Math.abs((1 - Number(predicted_liquidity_above)/Number(object_info.liquidity)) * 100), Math.abs((1 - Number(predicted_liquidity_below)/Number(object_info.liquidity)) * 100)) 
+                            logger(this.config.debug, LogLevel.DEBUG, LogTopic.FAILED_TEST_LIQUIDITY, `${p.address} predicted: ${predicted_liquidity_above} / ${predicted_liquidity_below} object: ${object_info.liquidity} diff in perc: ${in_percent}`)    
+                            
+                            if (in_percent > 0.00001) {
+                                this.add_test_failure(p.address, TestNames.LIQUIDITY);
+                            }   
+                            else {
+                                this.remove_test_failure(p.address, TestNames.LIQUIDITY)
+                            }
+                        }
+                    }
+                    else {
+                        this.remove_test_failure(p.address, TestNames.LIQUIDITY)
+                    }
+                })            
+            }
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.TEST_LIQUIDITY, `${(error as Error).message}`)
+            }    
+        }
+    }
+
+    add_test_failure(address: string, test_name: TestNames) {
+        const element = this.failed_test_pools.find((failed_pool) => failed_pool.address == address && failed_pool.test_name == test_name);
+        if (element){
+            element.counter = element.counter + 1
+            logger(this.config.debug, LogLevel.DEBUG, LogTopic.FAILED_TEST_LIQUIDITY, `${address} liquidity test failed for ${element.counter} times`)    
+        }
+        else {
+            this.failed_test_pools.push({address, counter: 1, test_name});
+        }
+    }
+
+    remove_test_failure(address: string, test_name: TestNames) {
+        this.failed_test_pools = this.failed_test_pools.filter((failed) => !(failed.address == address && failed.test_name==test_name))
+    }
+
+    test_liquidity_passed(pool: Pool): boolean {
+        const query = this.failed_test_pools.find((p) => (p.address == pool.address) && (p.test_name == TestNames.LIQUIDITY));
+        if (query === undefined) {
+            return true
+        }
+        else {
+            return query!.counter < this.config.test_liquidity_limit_failed! 
+        }
+    }
+
+    async test_liquidity_loop() {
+        if (this.config.liquidity_test_every_ms) {
+            let last_test: number = Date.now();
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                if (Date.now() - last_test > this.config.liquidity_test_every_ms) {
+                    await this.test_liquidity();
+                    last_test = Date.now();
+                }
+                await sleep(this.config.liquidity_test_every_ms);
+            } 
+        }
+        else {
+            logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.TEST_LIQUIDITY, "No tests scheduled")
+        }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    parse_object(sui_object: SuiObjectResponse): ParsedSuiObjectInfo {
+        throw new Error("Implement for each dex!")
+    }
+
+    async run() {
+        this.propose_pools_and_add().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.PROPOSE_POOLS_STOPPED, (error as Error).message);});
+        this.update_static().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STATIC_STOPPED, (error as Error).message);});
+        this.update_dynamic().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_DYNAMIC_STOPPED, (error as Error).message);});
+        this.update().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.UPDATER_STOPPED, (error as Error).message);});
+        this.update_state_and_deliver().catch((error) => {logger(this.config.debug, LogLevel.CRITICAL, LogTopic.COLLECTOR_DELIVERY, (error as Error).message);});
+        this.test_liquidity_loop();
+
+        if (this.config.server_port) {
+            const server = this.create_server();
+
+            server.listen(this.config.server_port, () => {
+                logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SERVER, 
+                    `Server running at http://localhost:${this.config.server_port}/`);
+            });
+        
+            server.on('error', (error: NodeJS.ErrnoException) => {
+                logger(this.config.debug, LogLevel.CRITICAL, LogTopic.SERVER, 
+                    `Server stopped. ${error.message}`);
+            });
+        }
+    }
+
+}
+
+export interface ParsedSuiObjectInfo {
+    address?: string,
+    dex?: Dex,
+    model?: Model,
+    coin_types?: string[],
+    pool_call_types?: string[],
+    static_fee?: number // 100 * bps 
+    weights?: number[], // balancer
+    stable_amplification?: number,
+    tick_spacing?: number,
+    sqrt_price: bigint,
+    current_tick_index: number,
+    liquidity: bigint
+}
+
+enum TestNames {
+    LIQUIDITY = "LIQUIDITY"
 }
