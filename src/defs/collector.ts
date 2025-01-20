@@ -15,10 +15,12 @@ export class Collector {
     state_delivery: {[dex: string]: 
         {data: string, timestamp: number}
     }
+    price_delivery: {data: {[pool_address: string]: string|string[]}, timestamp: number}; 
 
     constructor(config: ConfigCollector) {
         this.config = config
         this.state_delivery = {}
+        this.price_delivery = {data: {}, timestamp: Date.now()};
         for (const dex of Object.values(Dex)) {
             this.state_delivery[dex] = {data: JSON.stringify([]), timestamp: 0}
         }
@@ -74,6 +76,51 @@ export class Collector {
                             }
                             res.writeHead(200, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify(response));
+                        } catch (error) {
+                            res.writeHead(500, {'Content-Type': 'text/plain'});
+                            res.end(`${(error as Error).message}`);
+                        }
+                    });
+                }
+                else if (method === 'POST' && url?.includes("price_del")) {
+                    let body = '';
+            
+                    req.on('data', (chunk) => {
+                        body += chunk.toString();
+                    });
+            
+                    req.on('end', () => {
+                        try {
+                            const {timestamp, data}: PriceManagerDelivery = JSON.parse(body);
+                            this.price_delivery = {timestamp, data};
+                            res.writeHead(200, {'Content-Type': 'text/plain'});
+                            res.end('');
+                        } catch (error) {
+                            res.writeHead(500, {'Content-Type': 'text/plain'});
+                            res.end(`${(error as Error).message}`);
+                        }
+                    });
+
+                } 
+                else if (method === 'POST' && url?.includes("price_ret")) {
+                    let body = '';
+            
+                    req.on('data', (chunk) => {
+                        body += chunk.toString();
+                    });
+            
+                    req.on('end', () => {
+                        try {
+                            const request: PriceRetrieval = JSON.parse(body);
+                            
+                            let response: string = JSON.stringify({data: {}, timestamp: this.price_delivery.timestamp}); 
+
+                            if (request.timestamp < this.price_delivery.timestamp) {
+                                response = JSON.stringify(this.price_delivery);
+                            }
+                            
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(response);
                         } catch (error) {
                             res.writeHead(500, {'Content-Type': 'text/plain'});
                             res.end(`${(error as Error).message}`);
@@ -147,6 +194,15 @@ interface ManagerResponse {
     dex: Dex
 }
 
+interface PriceManagerDelivery {
+    data: {[pool_address: string]: string|string[]},
+    timestamp: number
+}
+
 export type DataRequest = {
     [dex: string]: number
+}
+
+export type PriceRetrieval = {
+    timestamp: number
 }
