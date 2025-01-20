@@ -140,16 +140,9 @@ export class PriceManager {
         const scope = this.prices.data.filter((pr) => pr.dex == dex && pr.model != Model.UniswapV3);
 
         if (scope.length > 0) {
-            const partition: number[] = [Math.floor(scope.length / 8)]
+            const partition: number[] = [Math.floor(scope.length / 4)]
         
-            let remainder = scope.length % 8;
-            if (remainder >= 4) {
-                partition.push(1)
-                remainder = remainder - 4
-            } 
-            else {
-                partition.push(0)
-            }
+            let remainder = scope.length % 4;
             if (remainder >= 2) {
                 partition.push(1)
                 remainder = remainder - 2
@@ -166,15 +159,15 @@ export class PriceManager {
                 partition.push(0)
             }
     
-            if (remainder != 0 || partition.length != 4) throw new Error("I can't do basic arithmetic no more")
+            if (remainder != 0 || partition.length != 3) throw new Error("I can't do basic arithmetic no more")
             
             const package_id = price_packages[dex];
             const module = "balance"
     
             let start = 0
     
-            for (let i=0; i<4; i++) {
-                const count_batch = 2**(3-i)
+            for (let i=0; i<3; i++) {
+                const count_batch = 2**(2-i)
                 const number_iterations = partition[i]
     
                 for (let j=0; j < number_iterations; j++) {
@@ -209,130 +202,61 @@ export class PriceManager {
     add_dex_to_txn_sqrt_prices(dex: Dex, txn: Transaction){
         const scope = this.prices.data.filter((pr) => pr.dex == dex && pr.model == Model.UniswapV3);
 
-        if (scope.length > 0) {
-            if (dex != Dex.Turbos) {
-                const partition: number[] = [Math.floor(scope.length / 8)]
-            
-                let remainder = scope.length % 8;
-                if (remainder >= 4) {
-                    partition.push(1)
-                    remainder = remainder - 4
-                } 
-                else {
-                    partition.push(0)
-                }
-                if (remainder >= 2) {
-                    partition.push(1)
-                    remainder = remainder - 2
-                }
-                else {
-                    partition.push(0)
-                }
-    
-                if (remainder >= 1) {
-                    partition.push(1)
-                    remainder = remainder - 1
-                }
-                else {
-                    partition.push(0)
-                }
-    
-                if (remainder != 0 || partition.length != 4) throw new Error("I can't do basic arithmetic no more")
-                
-                const package_id = price_packages[dex];
-                const module = "sqrtprice"
-    
-                let start = 0
-    
-                for (let i=0; i<4; i++) {
-                    const count_batch = 2**(3-i)
-                    const number_iterations = partition[i]
-    
-                    for (let j=0; j < number_iterations; j++) {
-                        const corresponding_slice = scope.slice(start + j * count_batch, start + count_batch * (j+1));
-                        const type_args: string[] = [];
-                        corresponding_slice.forEach((pr) => {
-                            pr.pool_call_types.forEach((t) => type_args.push(t))
-                        })
-    
-                        const pools = corresponding_slice.map((pr) => txn.object(pr.address))
-    
-                        const b = txn.moveCall({
-                            target: `${package_id}::${module}::get_sqrtprice_${count_batch}`,
-                            arguments: [...pools],
-                            typeArguments: type_args
-                        })
-    
-                        txn.moveCall({
-                            target: `${package_id}::${module}::emit_sqrts`,
-                            arguments: [b[0]]
-                        })
-                    
-                    }
-    
-                    start = start + number_iterations * count_batch;
-                } 
-    
-                return txn
+        if (scope.length > 0) {       
+            const partition: number[] = [Math.floor(scope.length / 4)]
+        
+            let remainder = scope.length % 4;
+            if (remainder >= 2) {
+                partition.push(1)
+                remainder = remainder - 2
             }
-            // turbos case
             else {
-                const partition: number[] = [Math.floor(scope.length / 4)]
-            
-                let remainder = scope.length % 4;
-                if (remainder >= 2) {
-                    partition.push(1)
-                    remainder = remainder - 2
-                }
-                else {
-                    partition.push(0)
-                }
-    
-                if (remainder >= 1) {
-                    partition.push(1)
-                    remainder = remainder - 1
-                }
-                else {
-                    partition.push(0)
-                }
-    
-                if (remainder != 0 || partition.length != 3) throw new Error("I can't do basic arithmetic no more")
-                
-                const package_id = price_packages[dex];
-                const module = "sqrtprice"
-    
-                let start = 0
-    
-                for (let i=0; i<3; i++) {
-                    const count_batch = 2**(2-i)
-                    const number_iterations = partition[i]
-    
-                    for (let j=0; j < number_iterations; j++) {
-                        const corresponding_slice = scope.slice(start + j * count_batch, start + count_batch * (j+1));
-                        const type_args: string[] = [];
-                        corresponding_slice.forEach((pr) => {
-                            pr.pool_call_types.forEach((t) => type_args.push(t))
-                        })
-    
-                        const pools = corresponding_slice.map((pr) => txn.object(pr.address))
-    
-                        const b = txn.moveCall({
-                            target: `${package_id}::${module}::get_sqrtprice_${count_batch}`,
-                            arguments: [...pools],
-                            typeArguments: type_args
-                        })
-    
-                        txn.moveCall({
-                            target: `${package_id}::${module}::emit_sqrts`,
-                            arguments: [b[0]]
-                        })
-                    
-                    }
-    
-                    start = start + number_iterations * count_batch;
-                } 
-
+                partition.push(0)
             }
+
+            if (remainder >= 1) {
+                partition.push(1)
+                remainder = remainder - 1
+            }
+            else {
+                partition.push(0)
+            }
+
+            if (remainder != 0 || partition.length != 3) throw new Error("I can't do basic arithmetic no more")
+            
+            const package_id = price_packages[dex];
+            const module = "sqrtprice"
+
+            let start = 0
+
+            for (let i=0; i<3; i++) {
+                const count_batch = 2**(2-i)
+                const number_iterations = partition[i]
+
+                for (let j=0; j < number_iterations; j++) {
+                    const corresponding_slice = scope.slice(start + j * count_batch, start + count_batch * (j+1));
+                    const type_args: string[] = [];
+                    corresponding_slice.forEach((pr) => {
+                        pr.pool_call_types.forEach((t) => type_args.push(t))
+                    })
+
+                    const pools = corresponding_slice.map((pr) => txn.object(pr.address))
+
+                    const b = txn.moveCall({
+                        target: `${package_id}::${module}::get_sqrtprice_${count_batch}`,
+                        arguments: [...pools],
+                        typeArguments: type_args
+                    })
+
+                    txn.moveCall({
+                        target: `${package_id}::${module}::emit_sqrts`,
+                        arguments: [b[0]]
+                    })
+                
+                }
+
+                start = start + number_iterations * count_batch;
+            } 
         } 
 
         return txn
