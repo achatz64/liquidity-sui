@@ -154,7 +154,7 @@ export function to_essential_json(pool: Pool): {
 
         model: pool.model, 
         coin_types: pool.coin_types,
-        pool_call_types: pool.coin_types,
+        pool_call_types: pool.pool_call_types,
         static_fee: pool.static_fee, // 100 * bps 
         stable_amplification: pool.stable_amplification,
         tick_spacing: pool.tick_spacing,
