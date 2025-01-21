@@ -4,6 +4,7 @@ import { ConfigPriceManager, PriceManager } from "../src/defs/price_manager";
 const config: ConfigPriceManager = {
     debug: true,
     sui_rpc_wait_time_ms: 200,
+    sui_rpc_wait_time_after_error_ms: 5000,
     sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4",
     collector_url: "http://localhost:7001/",
     fetch_price_every_ms: 10,

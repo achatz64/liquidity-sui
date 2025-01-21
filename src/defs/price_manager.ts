@@ -25,6 +25,7 @@ export interface PriceDelivery {
 export interface ConfigPriceManager {
     debug: boolean,
     sui_rpc_wait_time_ms: number,
+    sui_rpc_wait_time_after_error_ms: number,
     sui_simulation_address: string,
     fetch_price_every_ms: number,
     check_for_new_pools_every_ms: number
@@ -283,20 +284,26 @@ export class PriceManager {
         const url = this.config.collector_url;
         const data: {[pool_address: string]: string|string[]} = {}
         for (const pr of this.prices.data) {
-            data[pr.address] = pr.balances?.map((b)=>b.toString()) ?? pr.sqrt_price!.toString();
+            if (pr.balances != undefined || pr.sqrt_price != undefined) {
+                data[pr.address] = pr.balances?.map((b)=>b.toString()) ?? pr.sqrt_price!.toString();
+            }
         } 
-        const send: PriceDelivery = {data, timestamp: this.prices.timestamp} 
-        const body = JSON.stringify(send);
-        const request = await fetch(url + "price_del", {
-            "headers": {
-                "accept": "*/*",
-            },
-            body,
-            "method": "POST"
-        })
+        logger(this.config.debug, LogLevel.DEBUG, LogTopic.DELIVER_PRICE, `Found ${Object.keys(data).length} prices for  ${this.prices.data.length} pools.`)
         
-        if (request.status != 200) {
-            logger(this.config.debug, LogLevel.ERROR, LogTopic.DELIVER_PRICE, `${request.statusText}`)
+        if (Object.keys(data).length > 0) {
+            const send: PriceDelivery = {data, timestamp: this.prices.timestamp} 
+            const body = JSON.stringify(send);
+            const request = await fetch(url + "price_del", {
+                "headers": {
+                    "accept": "*/*",
+                },
+                body,
+                "method": "POST"
+            })
+            
+            if (request.status != 200) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.DELIVER_PRICE, `${request.statusText}`)
+            }
         }
     }
 
@@ -326,6 +333,7 @@ export class PriceManager {
             }
             catch (error) {
                 logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `${(error as Error).message}`)
+                await sleep(this.config.sui_rpc_wait_time_after_error_ms)
             }
             await sleep(this.config.fetch_price_every_ms);
         }
