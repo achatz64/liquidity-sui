@@ -7,7 +7,6 @@ import { Transaction } from '@mysten/sui/transactions'
 import { sleep, wait_for_call } from "../utils";
 import { logger, LogLevel, LogTopic } from "./logging";
 
-
 export interface PriceInfo {
     address: string,
     dex: Dex,
@@ -16,6 +15,11 @@ export interface PriceInfo {
 
     sqrt_price?: bigint,
     balances?: bigint[]
+}
+
+export interface PriceDelivery {
+    data: {[pool_address: string]: string|string[]}, 
+    timestamp: number
 }
 
 export interface ConfigPriceManager {
@@ -45,7 +49,7 @@ export class PriceManager {
 
     async retrieve_all_pools(): Promise<Pool[]> {
         const url = this.config.collector_url;
-        const request: {[dex: string]: {data: string, timestamp: number}} = await (await fetch(url, {
+        const request: {[dex: string]: {data: string, timestamp: number}} = await (await fetch(url + "retrieval", {
             "headers": {
                 "accept": "*/*",
             },
@@ -268,9 +272,31 @@ export class PriceManager {
             const response = (await this.simulateTransaction(tx)).transactionResponse;
             const events = response.events.map((e) => e.parsedJson as {data: {id: string, b?: string[], sp?: string}[]});
             events.forEach((e) => this.handle_event(e))
+            this.prices.timestamp = Date.now();
         }
         catch (error) {
             logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `${(error as Error).message}`)
+        }
+    }
+
+    async price_delivery_to_collector() {
+        const url = this.config.collector_url;
+        const data: {[pool_address: string]: string|string[]} = {}
+        for (const pr of this.prices.data) {
+            data[pr.address] = pr.balances?.map((b)=>b.toString()) ?? pr.sqrt_price!.toString();
+        } 
+        const send: PriceDelivery = {data, timestamp: this.prices.timestamp} 
+        const body = JSON.stringify(send);
+        const request = await fetch(url + "price_del", {
+            "headers": {
+                "accept": "*/*",
+            },
+            body,
+            "method": "POST"
+        })
+        
+        if (request.status != 200) {
+            logger(this.config.debug, LogLevel.ERROR, LogTopic.DELIVER_PRICE, `${request.statusText}`)
         }
     }
 
@@ -278,14 +304,35 @@ export class PriceManager {
         await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
         tx.setSenderIfNotSet(this.address)
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call tx.build")
+        const start_serialize = Date.now()/1000;
         const serialize = await tx.build({
             client: this.client
         })
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call serialize took ${Date.now()/1000 - start_serialize} secs`);
         const start = Date.now()/1000;
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call dryRunTransactionBlock")
         const transactionResponse = await this.client.dryRunTransactionBlock({transactionBlock: serialize})
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call dryRunTransactionBlock took ${Date.now()/1000 - start} secs`);
         this.last_sui_rpc_request_ms = Date.now();
         return {receipt: {digest: ""}, transactionResponse}
+    }
+
+    async loop_fetch_price() {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            try {
+                await this.get_prices();
+                await this.price_delivery_to_collector();
+            }
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `${(error as Error).message}`)
+            }
+            await sleep(this.config.fetch_price_every_ms);
+        }
+    }
+
+    async run() {
+        this.loop_fetch_new_pools().catch((error)=> logger(this.config.debug, LogLevel.CRITICAL, LogTopic.LOOP_FETCH_POOLS, `${(error as Error).message}`))
+        this.loop_fetch_price().catch((error)=> logger(this.config.debug, LogLevel.CRITICAL, LogTopic.LOOP_FETCH_PRICE, `${(error as Error).message}`))
     }
 }

@@ -113,10 +113,10 @@ export class Collector {
                         try {
                             const request: PriceRetrieval = JSON.parse(body);
                             
-                            let response: string = JSON.stringify({data: {}, timestamp: this.price_delivery.timestamp}); 
+                            let response: string = JSON.stringify({timestamp: this.price_delivery.timestamp, update: false}); 
 
                             if (request.timestamp < this.price_delivery.timestamp) {
-                                response = JSON.stringify(this.price_delivery);
+                                response = JSON.stringify({...this.price_delivery, update: true});
                             }
                             
                             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -205,4 +205,10 @@ export type DataRequest = {
 
 export type PriceRetrieval = {
     timestamp: number
+}
+
+export interface ResponsePriceRetrieval {
+    timestamp: number,
+    update: boolean,
+    data?: {[pool_address: string]: string|string[]}
 }
