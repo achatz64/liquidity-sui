@@ -76,7 +76,7 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
     parse_basic_pool_info(pool_info: AftermathBasicPoolInfo, object_fields: {fields: {weights: string[], type_names: string[], fees_swap_in: string[], fees_swap_out: string[]}}): Pool {
     
 
-        const weights = object_fields.fields.weights.map((weight) => Number(weight.slice(0, 3))/1000)
+        const weights = object_fields.fields.weights.map((weight) => Number(weight.slice(0, 4))/10000)
         
         const no_fees_out = (object_fields.fields.fees_swap_out as string[]).every((fee) => Number(fee)==0)
         if (!no_fees_out) throw new Error("Fees out not supported")
@@ -96,7 +96,7 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
             address: pool_info.objectId, 
             dex: this.config.dex, 
             model: model, 
-            coin_types: object_fields.fields.type_names,
+            coin_types: object_fields.fields.type_names.map((n) => "0x"+n),
             pool_call_types: [pool_info.lpCoinType],
             stable_amplification: Number(pool_info.flatness.replace("n", ""))/(10**18),
             weights,
