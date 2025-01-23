@@ -73,27 +73,21 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
         else return false;
     }
 
-    parse_basic_pool_info(pool_info: AftermathBasicPoolInfo): Pool {
-        const coins = pool_info.coins; 
-        const coin_infos: AftermathCoinInfo[] = [];
+    parse_basic_pool_info(pool_info: AftermathBasicPoolInfo, object_fields: {fields: {weights: string[], type_names: string[], fees_swap_in: string[], fees_swap_out: string[]}}): Pool {
+    
+
+        const weights = object_fields.fields.weights.map((weight) => Number(weight.slice(0, 3))/1000)
         
-        for (const coin_type in coins) {
-            const coin_info = coins[coin_type];
-            coin_info.type = coin_type;
-            coin_infos.push(coin_info);
-        }
-        const weights = coin_infos.map((c) => c.weight).map((weight) => Number(weight.slice(0, 3))/1000)
-        // TODO: check fees
-        const fees = coin_infos.map((c)=>c.tradeFeeIn).map((fee) => 100 * Number(fee.replace("n", ""))/100000000000000)
+        const no_fees_out = (object_fields.fields.fees_swap_out as string[]).every((fee) => Number(fee)==0)
+        if (!no_fees_out) throw new Error("Fees out not supported")
+
+        const fees = object_fields.fields.fees_swap_in.map((fee) => 100 * Number(fee.replace("n", ""))/100000000000000)
         if (fees.some((fee) => fee != fees[0])) throw new Error("Undetermined total fee")
 
         if (pool_info.flatness != "0n") {
             if (weights.some((p) => Math.abs(p - weights[0]) > 0.01)) {
                 logger(this.config.debug, LogLevel.DEBUG, LogTopic.ADD_POOL, `${pool_info.objectId} Aftermath stable pool with different weights!`);    
             }
-        }
-        if (coin_infos.filter((c)=> c.tradeFeeOut != "0n").length > 0) {
-            logger(this.config.debug, LogLevel.DEBUG, LogTopic.ADD_POOL, `${pool_info.objectId} Aftermath pool with fee out!`);    
         }
 
         const model = pool_info.flatness == "0n" ? (weights.some((p) => p != 0.5) ? Model.Balancer : Model.Amm) : Model.AftermathStable;
@@ -102,7 +96,7 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
             address: pool_info.objectId, 
             dex: this.config.dex, 
             model: model, 
-            coin_types: Object.keys(coins),
+            coin_types: object_fields.fields.type_names,
             pool_call_types: [pool_info.lpCoinType],
             stable_amplification: Number(pool_info.flatness.replace("n", ""))/(10**18),
             weights,
@@ -114,7 +108,10 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
 
     async propose_pools(): Promise<Pool[]> {
         const response = await this.call_aftermath_pool_api((pool_info) => this.condition_for_pool(pool_info));
-        const pools_proposed = response.map((pool_info) => this.parse_basic_pool_info(pool_info));
+        const ids = response.map((p) => p.objectId);
+        const objects = (await this.client.multiGetObjects({ids, options: {"showContent": true}}));
+        const object_fields =  objects.map((r) => r.data!.content! as unknown as {fields: {weights: string[], type_names: string[], fees_swap_in: string[], fees_swap_out: string[]}});
+        const pools_proposed = response.map((pool_info, i) => this.parse_basic_pool_info(pool_info, object_fields[i]));
         const pools_proposed_addresses = pools_proposed.map((pool) => pool.address);
         
         // remove pools TODO: more rigid criteria
