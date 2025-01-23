@@ -85,6 +85,7 @@ export class PriceManager {
                 current_addr.forEach((addr) => {
                     if (! all_pools_addr.some((a) => a == addr)) {
                         this.remove_pool(addr)
+                        logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Removing pool ${addr}`)
                     }
                 })
     
@@ -97,6 +98,7 @@ export class PriceManager {
                             pool_call_types: pool.pool_call_types!
                         })
                         this.prices.timestamp = Date.now()
+                        logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Adding pool ${pool.address}`)
                     }
                 })
 
