@@ -92,12 +92,15 @@ export class PoolManagerKriya extends PoolManagerWithClient {
         return Number(pool_info.tvl) > this.config.threshold_liquidity_usd_for_pool
     }
 
-    parse_basic_pool_info_v2(pool_info: KriyaBasicPoolInfoV2): Pool {
-        const model = pool_info.isStable ? Model.KriyaStable : Model.Amm 
+    parse_basic_pool_info_v2(pool_info: KriyaBasicPoolInfoV2, object_fields: {fields: {is_stable: boolean}}): Pool {
+        const stable: boolean = object_fields.fields.is_stable;
+        const amp = stable ? 3000/4 : 0
+        const model = stable ? Model.KriyaStable : Model.Amm 
         const pool: Pool = {
             address: pool_info.poolId, 
             dex: this.config.dex, 
             model: model, 
+            stable_amplification: amp,
             coin_types: [pool_info.tokenX.coinType, pool_info.tokenY.coinType],
             pool_call_types: [pool_info.tokenX.coinType, pool_info.tokenY.coinType],
             static_fee: Math.floor((Number(pool_info.lpFeesPercent) +  Number(pool_info.protocolFeesPercent)))
@@ -122,7 +125,10 @@ export class PoolManagerKriya extends PoolManagerWithClient {
 
     async propose_pools(): Promise<Pool[]> {
         const response_v2 = await this.call_kriya_pool_api_v2((pool_info) => this.condition_for_pool(pool_info));
-        const pools_proposed_v2 = response_v2.map((pool_info) => this.parse_basic_pool_info_v2(pool_info));
+        const ids = response_v2.map((p) => p.poolId);
+        const objects = (await this.client.multiGetObjects({ids, options: {"showContent": true}}));
+        const object_fields =  objects.map((r) => r.data!.content! as unknown as {fields: {is_stable: boolean}});
+        const pools_proposed_v2 = response_v2.map((pool_info, i) => this.parse_basic_pool_info_v2(pool_info, object_fields[i]));
         
         await sleep(this.config.kriya_api_wait_ms + 500);
         const response_v3 = await this.call_kriya_pool_api_v3((pool_info) => this.condition_for_pool(pool_info));
