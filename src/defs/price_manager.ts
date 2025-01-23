@@ -329,6 +329,7 @@ export class PriceManager {
     async loop_fetch_price() {
         // eslint-disable-next-line no-constant-condition
         while (true) {
+            const start = Date.now();
             try {
                 await this.get_prices();
                 await this.price_delivery_to_collector();
@@ -337,7 +338,10 @@ export class PriceManager {
                 logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `${(error as Error).message}`)
                 await sleep(this.config.sui_rpc_wait_time_after_error_ms)
             }
-            await sleep(this.config.fetch_price_every_ms);
+            const diff = Date.now() - start;
+            if (diff < this.config.fetch_price_every_ms) {
+                await sleep(this.config.fetch_price_every_ms - diff);
+            }
         }
     }
 
