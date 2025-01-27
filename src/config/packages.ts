@@ -11,3 +11,5 @@ export const price_packages: {[dex: string]: string} = {
     "Turbos": "0xc337a669f78c338a7baf4edabdf768e67506dc0e8a6d6a4346f33bea8abd1949",
     "Aftermath": "0x4f049e993a309ad93e66b6eda6a33c2d11d59c33f683454d218d9cd45fa35d3d"
 }
+
+export const timestamp_package = "0x2617ce867a891ebeca35c51e732fd6188e802ce370c3658b849ab7106dd5220b"

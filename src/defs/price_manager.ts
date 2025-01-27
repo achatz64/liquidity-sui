@@ -1,5 +1,5 @@
 import { Dex, Model, Pool } from "./pools";
-import { price_packages } from "../config/packages";
+import { price_packages, timestamp_package } from "../config/packages";
 
 // external
 import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
@@ -45,7 +45,7 @@ export class PriceManager {
         this.client = new SuiClient({url: getFullnodeUrl("mainnet")});
         this.last_sui_rpc_request_ms = 0;
         this.address = config.sui_simulation_address;
-        this.prices = {data: [], timestamp: Date.now()};
+        this.prices = {data: [], timestamp: 0};
     }
 
     async retrieve_all_pools(): Promise<Pool[]> {
@@ -70,7 +70,7 @@ export class PriceManager {
     }
 
     remove_pool(address: string) {
-        this.prices = {data: this.prices.data.filter((pr) => pr.address != address), timestamp: Date.now()};
+        this.prices = {data: this.prices.data.filter((pr) => pr.address != address), timestamp: this.prices.timestamp};
     }
 
     async loop_fetch_new_pools() {
@@ -97,7 +97,6 @@ export class PriceManager {
                             model: pool.model!,
                             pool_call_types: pool.pool_call_types!
                         })
-                        this.prices.timestamp = Date.now()
                         logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Adding pool ${pool.address}`)
                     }
                 })
@@ -132,8 +131,17 @@ export class PriceManager {
         })
     }
 
+    read_time(event_parsed_json: {timestamp: string}) {
+        return Number(event_parsed_json.timestamp)
+    }
+
     construct_price_request(): Transaction {
         const tx = new Transaction();
+
+        tx.moveCall({
+            target: `${timestamp_package}::timestamp::emit_time_event`,
+            arguments: [tx.object("0x0000000000000000000000000000000000000000000000000000000000000006")]
+        })
 
         for (const dex of Object.values(Dex)) {
           this.add_dex_to_txn_sqrt_prices(dex, tx)
@@ -272,10 +280,12 @@ export class PriceManager {
     async get_prices() {
         const tx = this.construct_price_request();
         try {
-            const response = (await this.simulateTransaction(tx)).transactionResponse;
-            const events = response.events.map((e) => e.parsedJson as {data: {id: string, b?: string[], sp?: string}[]});
-            events.forEach((e) => this.handle_event(e))
-            this.prices.timestamp = Date.now();
+            const response = (await this.simulateTransaction(tx)).transactionResponse;    
+            const timestamp = this.read_time(response.events[0].parsedJson as {timestamp: string});
+            const price_events = response.events.slice(1).map((e) => e.parsedJson as {data: {id: string, b?: string[], sp?: string}[]});
+            price_events.forEach((e) => this.handle_event(e))
+            this.prices.timestamp = timestamp;
+            logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_PRICE, `Timestamp difference ${Date.now()-timestamp}`)
         }
         catch (error) {
             logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `${(error as Error).message}`)
