@@ -100,7 +100,7 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
             pool_call_types: [pool_info.lpCoinType],
             stable_amplification: Number(pool_info.flatness.replace("n", ""))/(10**18),
             weights,
-            static_fee: fees[0] - 50, // TODO: Understand where the 0.5bp fee comes from? 
+            static_fee: fees[0] + 50, // TODO: Understand where the 0.5bp fee comes from? 
         };
         
         return pool;
