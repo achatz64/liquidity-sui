@@ -92,7 +92,9 @@ export class Collector {
                     req.on('end', () => {
                         try {
                             const {timestamp, data}: PriceManagerDelivery = JSON.parse(body);
-                            this.price_delivery = {timestamp, data};
+                            if (timestamp > this.price_delivery.timestamp) {
+                                this.price_delivery = {timestamp, data};
+                            }
                             res.writeHead(200, {'Content-Type': 'text/plain'});
                             res.end('');
                         } catch (error) {
