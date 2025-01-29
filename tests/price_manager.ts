@@ -8,7 +8,8 @@ const config: ConfigPriceManager = {
     sui_simulation_address: "0xaed3970cd36bbd3a8d7deb0d06acb27d3ff69cc4fd4657cea3b8adfacebcd3c4",
     collector_url: "http://localhost:7001/",
     fetch_price_every_ms: 5 * 1000,
-    check_for_new_pools_every_ms: 60 * 1000
+    check_for_new_pools_every_ms: 60 * 1000,
+    aim_lag_ms: 1000
 }
 
 const price_manager = new PriceManager(config);

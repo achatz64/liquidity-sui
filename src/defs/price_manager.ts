@@ -28,6 +28,7 @@ export interface ConfigPriceManager {
     sui_rpc_wait_time_after_error_ms: number,
     sui_simulation_address: string,
     fetch_price_every_ms: number,
+    aim_lag_ms: number, // lag between block creation and price retrieval 
     check_for_new_pools_every_ms: number
 
     collector_url: string
@@ -42,6 +43,7 @@ export class PriceManager {
     pools_updated: number = 0; // used for tx serialization
     last_serialization: number = -1;
     serialized_txn?: Uint8Array
+    fetch_price_every_ms: number
     
     constructor(config: ConfigPriceManager) {
         this.config = config
@@ -49,6 +51,7 @@ export class PriceManager {
         this.last_sui_rpc_request_ms = 0;
         this.address = config.sui_simulation_address;
         this.prices = {data: [], timestamp: 0};
+        this.fetch_price_every_ms = config.fetch_price_every_ms
     }
 
     async retrieve_all_pools(): Promise<Pool[]> {
@@ -302,6 +305,14 @@ export class PriceManager {
             price_events.forEach((e) => this.handle_event(e))
             this.prices.timestamp = timestamp;
             logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_PRICE, `Timestamp difference ${Date.now()-timestamp}`)
+            if (Date.now()-timestamp < this.config.aim_lag_ms) {
+                if (this.fetch_price_every_ms != 500) logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.FETCH_PRICE, `Locking txn wait to 500 ms`)
+                    this.fetch_price_every_ms = 500
+            }
+            else {
+                if (this.fetch_price_every_ms != this.config.fetch_price_every_ms) logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.FETCH_PRICE, `Back to txn wait from config`)
+                this.fetch_price_every_ms = this.config.fetch_price_every_ms
+            }
         }
         catch (error) {
             logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `${(error as Error).message}`)
@@ -372,8 +383,8 @@ export class PriceManager {
                 await sleep(this.config.sui_rpc_wait_time_after_error_ms)
             }
             const diff = Date.now() - start;
-            if (diff < this.config.fetch_price_every_ms) {
-                await sleep(this.config.fetch_price_every_ms - diff);
+            if (diff < this.fetch_price_every_ms) {
+                await sleep(this.fetch_price_every_ms - diff);
             }
         }
     }
