@@ -39,6 +39,9 @@ export class PriceManager {
     client: SuiClient
     address: string
     last_sui_rpc_request_ms: number
+    pools_updated: number = 0; // used for tx serialization
+    last_serialization: number = -1;
+    serialized_txn?: Uint8Array
     
     constructor(config: ConfigPriceManager) {
         this.config = config
@@ -71,6 +74,19 @@ export class PriceManager {
 
     remove_pool(address: string) {
         this.prices = {data: this.prices.data.filter((pr) => pr.address != address), timestamp: this.prices.timestamp};
+        this.pools_updated = Date.now();
+        logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Removing pool ${address}`)
+    }
+
+    add_pool(pool: Pool) {
+        this.prices.data.push({
+            address: pool.address,
+            dex: pool.dex,
+            model: pool.model!,
+            pool_call_types: pool.pool_call_types!
+        })
+        this.pools_updated = Date.now();
+        logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Adding pool ${pool.address}`)
     }
 
     async loop_fetch_new_pools() {
@@ -85,19 +101,12 @@ export class PriceManager {
                 current_addr.forEach((addr) => {
                     if (! all_pools_addr.some((a) => a == addr)) {
                         this.remove_pool(addr)
-                        logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Removing pool ${addr}`)
                     }
                 })
     
                 all_pools.forEach((pool) => {
                     if (! this.prices.data.some((pr) => pr.address == pool.address)) {
-                        this.prices.data.push({
-                            address: pool.address,
-                            dex: pool.dex,
-                            model: pool.model!,
-                            pool_call_types: pool.pool_call_types!
-                        })
-                        logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Adding pool ${pool.address}`)
+                        this.add_pool(pool);
                     }
                 })
 
@@ -278,9 +287,16 @@ export class PriceManager {
     }
 
     async get_prices() {
-        const tx = this.construct_price_request();
         try {
-            const response = (await this.simulateTransaction(tx)).transactionResponse;    
+            if (this.pools_updated > this.last_serialization) {
+                const make_copy = this.pools_updated;
+                // serialize new txn
+                const tx = this.construct_price_request();
+                this.serialized_txn = await this.serializeTransaction(tx)
+                this.last_serialization = make_copy;
+            }
+        
+            const response = (await this.simulateTransaction()).transactionResponse;    
             const timestamp = this.read_time(response.events[0].parsedJson as {timestamp: string});
             const price_events = response.events.slice(1).map((e) => e.parsedJson as {data: {id: string, b?: string[], sp?: string}[]});
             price_events.forEach((e) => this.handle_event(e))
@@ -319,7 +335,7 @@ export class PriceManager {
         }
     }
 
-    async simulateTransaction(tx: Transaction) {
+    async serializeTransaction(tx: Transaction) {
         await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
         tx.setSenderIfNotSet(this.address)
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call tx.build")
@@ -327,10 +343,17 @@ export class PriceManager {
         const serialize = await tx.build({
             client: this.client
         })
+        this.last_sui_rpc_request_ms = Date.now();
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call serialize took ${Date.now()/1000 - start_serialize} secs`);
+        return serialize;
+    }
+
+    async simulateTransaction() {
+        if (this.serialized_txn == undefined) throw new Error("No serialized txn available")
+        await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
         const start = Date.now()/1000;
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call dryRunTransactionBlock")
-        const transactionResponse = await this.client.dryRunTransactionBlock({transactionBlock: serialize})
+        const transactionResponse = await this.client.dryRunTransactionBlock({transactionBlock: this.serialized_txn})
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call dryRunTransactionBlock took ${Date.now()/1000 - start} secs`);
         this.last_sui_rpc_request_ms = Date.now();
         return {receipt: {digest: ""}, transactionResponse}
