@@ -9,7 +9,7 @@ const config: ConfigPriceManager = {
     collector_url: "http://localhost:7001/",
     fetch_price_every_ms: 5 * 1000,
     check_for_new_pools_every_ms: 60 * 1000,
-    aim_lag_ms: 1000
+    aim_lag_ms: 0
 }
 
 const price_manager = new PriceManager(config);

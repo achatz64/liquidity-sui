@@ -33,7 +33,8 @@ export interface Pool {
     model?: Model, 
     coin_types?: string[],
     pool_call_types?: string[],
-    static_fee?: number // 100 * bps 
+    static_fee?: number // 100 * bps
+    protocol_fee_factor?: number // factor for the protocol fee, e.g. if protocol fee is 15% of total fee than protocol_fee_factor = 0.15 
     //static_fee_multi?: {[coin_in_index: string]: {[coin_out_index: string]: number}},
     weights?: number[], // balancer
     stable_amplification?: number,
@@ -141,6 +142,7 @@ export function to_essential_json(pool: Pool): {
         coin_types?: string[],
         pool_call_types?: string[],
         static_fee?: number, // 100 * bps 
+        protocol_fee_factor?: number, 
         stable_amplification?: number,
         tick_spacing?: number,
         weights?: number[],
@@ -157,6 +159,7 @@ export function to_essential_json(pool: Pool): {
         coin_types: pool.coin_types,
         pool_call_types: pool.pool_call_types,
         static_fee: pool.static_fee, // 100 * bps 
+        protocol_fee_factor: pool.protocol_fee_factor,
         stable_amplification: pool.stable_amplification,
         tick_spacing: pool.tick_spacing,
         weights: pool.weights,

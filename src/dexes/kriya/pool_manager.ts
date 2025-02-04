@@ -94,14 +94,16 @@ export class PoolManagerKriya extends PoolManagerWithClient {
 
     parse_basic_pool_info_v2(pool_info: KriyaBasicPoolInfoV2, object_fields: {fields: {is_stable: boolean}}): Pool {
         const stable: boolean = object_fields.fields.is_stable;
-        const model = stable ? Model.KriyaStable : Model.Amm 
+        const model = stable ? Model.KriyaStable : Model.Amm;
+        const static_fee = Math.floor((Number(pool_info.lpFeesPercent) +  Number(pool_info.protocolFeesPercent)));
         const pool: Pool = {
             address: pool_info.poolId, 
             dex: this.config.dex, 
             model: model, 
             coin_types: [pool_info.tokenX.coinType, pool_info.tokenY.coinType],
             pool_call_types: [pool_info.tokenX.coinType, pool_info.tokenY.coinType],
-            static_fee: Math.floor((Number(pool_info.lpFeesPercent) +  Number(pool_info.protocolFeesPercent)))
+            static_fee,
+            protocol_fee_factor: Number(pool_info.protocolFeesPercent)/static_fee
         };
         
         return pool;
