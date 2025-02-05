@@ -1,11 +1,12 @@
 import { Dex, Pool, check_pool, add_workflow_elements, update_coin_decimals_per_pool, check_static, check_dynamic, to_essential_json, Model } from "./pools"
 import { logger, LogLevel, LogTopic } from "./logging"
-import { sleep, wait_for_call } from "../utils"
+import { sleep, to_signed_i32, wait_for_call } from "../utils"
 
 // external
 import * as http from 'http';
 import { getFullnodeUrl, SuiClient, SuiObjectResponse } from '@mysten/sui/client'
 import { Transaction } from '@mysten/sui/transactions'
+import { price_packages } from "../config/packages";
 
 export interface ConfigManager {
     dex: Dex,
@@ -25,6 +26,7 @@ export class PoolManager {
     pools: Pool[];
     state_delivery: {data: string, timestamp: number, dex: Dex}
     status_delivery: boolean;
+    pools_updated: number = 0;
 
     constructor(config: ConfigManager) {
         this.config = config
@@ -37,7 +39,8 @@ export class PoolManager {
         for (const pool of pools) {
             if (check_pool(pool) && pool.dex == this.config.dex  && ! this.pools.map((pool) => pool.address).includes(pool.address)){
                 add_workflow_elements(pool);
-                this.pools.push(pool);  
+                this.pools.push(pool); 
+                this.pools_updated = Date.now(); 
                 logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.ADD_POOL, `${pool.address} proposed`)     
             }
             else {
@@ -50,6 +53,7 @@ export class PoolManager {
 
     remove(address: string) {
         this.pools = this.pools.filter((pool) => pool.address != address)
+        this.pools_updated = Date.now(); 
         logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.REMOVE_POOL, `${address}`)
     }
 
@@ -299,7 +303,7 @@ export class PoolManagerWithClient extends PoolManager {
         const in_scope = this.pools.filter((p) => check_dynamic(p) && p.model == Model.UniswapV3);
         
         // remove removed pools
-        this.failed_test_pools = this.failed_test_pools.filter((p) => in_scope.find((pool) => pool.address == p.address) !== undefined);
+        this.failed_test_pools = this.failed_test_pools.filter((p) => in_scope.find((pool) => pool.address == p.address) !== undefined || p.test_name != TestNames.LIQUIDITY);
 
         const l = in_scope.length; 
         if (l>0) {
@@ -451,4 +455,208 @@ export interface ParsedSuiObjectInfo {
 
 enum TestNames {
     LIQUIDITY = "LIQUIDITY"
+}
+
+export interface ConfigManagerWithClientAndLiquidityContract extends ConfigManager{
+    sui_rpc_wait_time_ms: number,
+    sui_simulation_address: string,
+    liquidity_test_every_ms: number,
+    bump_after_failed_liq_test_by_ms: number
+}
+
+// Used to check on liquidity in the background via contract calls and bump failed pools to receive faster update
+export class PoolManagerWithClientAndLiquidityContract extends PoolManagerWithClient {
+    last_serialization_liquidity: number = -1;
+    serialized_liquidity_txn?: Uint8Array
+    config: ConfigManagerWithClientAndLiquidityContract;
+    
+    constructor(config: ConfigManagerWithClientAndLiquidityContract) {
+        super(config);
+        this.config = config
+    }
+
+    async test_liquidity() { 
+        const in_scope = this.pools.filter((p) => check_dynamic(p) && p.model == Model.UniswapV3);
+        
+        // remove removed pools
+        this.failed_test_pools = this.failed_test_pools.filter((p) => in_scope.find((pool) => pool.address == p.address) !== undefined || p.test_name != TestNames.LIQUIDITY);
+
+        const l = in_scope.length; 
+        if (l>0) {
+
+            try {
+                const test_pools_liquidity = in_scope.map((p) => {return {
+                    address: p.address, 
+                    liquidity: p.liquidity!,
+                    tick_spacing: p.tick_spacing!
+                }});
+
+                // check if we need new serialization and retrieve if necessary 
+                const current_update = this.pools_updated;
+                if (this.last_serialization_liquidity < current_update || this.serialized_liquidity_txn == undefined) {
+                    this.serialized_liquidity_txn = await this.serialize_transaction(this.construct_liquidity_txn());
+                    this.last_serialization_liquidity = current_update
+                }
+
+                // fetch current liquidity in current tick space 
+                const response = (await this.simulate_serialized_transaction(this.serialized_liquidity_txn)).transactionResponse;    
+                const liquidity_events = response.events.map((e) => e.parsedJson as {data: {id: string, l: string, c: {bits: string}}[]});
+                const liquidity_infos: {[id: string]: {liquidity: bigint, current_tick_index: number}} = {};
+                liquidity_events.forEach((e) => {
+                    e.data.forEach(({id, l, c}) => {liquidity_infos[id] = {liquidity: BigInt(l), current_tick_index: to_signed_i32(c)};})
+                })
+
+                logger(this.config.debug, LogLevel.DEBUG, LogTopic.TEST_LIQUIDITY, `Testing ${test_pools_liquidity.length} pools including ${this.failed_test_pools.filter((p) => p.test_name == TestNames.LIQUIDITY).length} previously failed pools`);
+
+                test_pools_liquidity.forEach((p) => {
+                    const object_info = liquidity_infos[p.address];
+
+                    if (object_info) {
+                        const predicted_liquidity_below = p.liquidity.filter((t) => t.tick_index <= object_info.current_tick_index).reduce((p, c) => p + c.liquidity_net, BigInt(0))
+                        const predicted_liquidity_above = - p.liquidity.filter((t) => t.tick_index > object_info.current_tick_index).reduce((p, c) => p + c.liquidity_net, BigInt(0))
+                        if (predicted_liquidity_below != object_info.liquidity || predicted_liquidity_above != object_info.liquidity) {
+                            if (object_info.liquidity == BigInt(0)) {
+                                logger(this.config.debug, LogLevel.DEBUG, LogTopic.FAILED_TEST_LIQUIDITY, `${p.address} predicted: ${predicted_liquidity_above} / ${predicted_liquidity_below} object: 0`) 
+                                this.add_test_failure(p.address, TestNames.LIQUIDITY);
+                            }
+                            else {
+                                const in_percent = Math.max(Math.abs((1 - Number(predicted_liquidity_above)/Number(object_info.liquidity)) * 100), Math.abs((1 - Number(predicted_liquidity_below)/Number(object_info.liquidity)) * 100)) 
+                                logger(this.config.debug, LogLevel.DEBUG, LogTopic.FAILED_TEST_LIQUIDITY, `${p.address} predicted: ${predicted_liquidity_above} / ${predicted_liquidity_below} object: ${object_info.liquidity} diff in perc: ${in_percent}`)    
+                                
+                                if (in_percent > 0.00001) {
+                                    this.add_test_failure(p.address, TestNames.LIQUIDITY);
+                                }   
+                                else {
+                                    this.remove_test_failure(p.address, TestNames.LIQUIDITY)
+                                }
+                            }
+                        }
+                        else {
+                            this.remove_test_failure(p.address, TestNames.LIQUIDITY)
+                        }
+                    }
+                    else {
+                        throw new Error(`Liquidity data for ${p.address} not found in events`)
+                    }
+                    
+                })          
+                
+                // bump failed pools
+                for (const p of this.failed_test_pools) {
+                    if (p.test_name == TestNames.LIQUIDITY) {
+                        this.bump_liquidity_update(p.address)
+                    }
+                }
+            }
+            catch (error) {
+                logger(this.config.debug, LogLevel.ERROR, LogTopic.TEST_LIQUIDITY, `${(error as Error).message}`)
+            }    
+        }
+    }
+
+    bump_liquidity_update(address: string) {
+        const pool = this.pools.find((p) => p.address == address)
+        if (pool) {
+            if (pool.last_pull) {
+                pool.last_pull.time_ms = pool.last_pull.time_ms - this.config.bump_after_failed_liq_test_by_ms
+                logger(this.config.debug, LogLevel.DEBUG, LogTopic.LIQUIDITY_UPDATE, `Bumping liquidity update for pool ${pool.address}. Now lagging ${(Date.now()-pool.last_pull.time_ms)/1000} secs`)
+            }
+        }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    test_liquidity_passed(pool: Pool): boolean {
+        // not used to remove pools entirely
+        return true
+    }
+
+    construct_liquidity_txn(): Transaction {
+        // use all pools
+        const txn = new Transaction();
+          
+        const scope = this.pools.filter((p) => p.model == Model.UniswapV3);
+
+        if (scope.length > 0) {       
+            const partition: number[] = [Math.floor(scope.length / 4)]
+        
+            let remainder = scope.length % 4;
+            if (remainder >= 2) {
+                partition.push(1)
+                remainder = remainder - 2
+            }
+            else {
+                partition.push(0)
+            }
+
+            if (remainder >= 1) {
+                partition.push(1)
+                remainder = remainder - 1
+            }
+            else {
+                partition.push(0)
+            }
+
+            if (remainder != 0 || partition.length != 3) throw new Error("I can't do basic arithmetic no more")
+            
+            const package_id = price_packages[this.config.dex];
+            const module = "liquidity"
+
+            let start = 0
+
+            for (let i=0; i<3; i++) {
+                const count_batch = 2**(2-i)
+                const number_iterations = partition[i]
+
+                for (let j=0; j < number_iterations; j++) {
+                    const corresponding_slice = scope.slice(start + j * count_batch, start + count_batch * (j+1));
+                    const type_args: string[] = [];
+                    corresponding_slice.forEach((pr) => {
+                        pr.pool_call_types!.forEach((t) => type_args.push(t))
+                    })
+
+                    const pools = corresponding_slice.map((pr) => txn.object(pr.address))
+
+                    const b = txn.moveCall({
+                        target: `${package_id}::${module}::current_liquidity_${count_batch}`,
+                        arguments: [...pools],
+                        typeArguments: type_args
+                    })
+
+                    txn.moveCall({
+                        target: `${package_id}::${module}::emit_current_liquidity`,
+                        arguments: [b[0]]
+                    })
+                
+                }
+
+                start = start + number_iterations * count_batch;
+            } 
+        } 
+
+        return txn     
+    }
+
+    async serialize_transaction(tx: Transaction) {
+        await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
+        tx.setSenderIfNotSet(this.address)
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call tx.build")
+        const start_serialize = Date.now()/1000;
+        const serialize = await tx.build({
+            client: this.client
+        })
+        this.last_sui_rpc_request_ms = Date.now();
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call serialize took ${Date.now()/1000 - start_serialize} secs`);
+        return serialize;
+    }
+
+    async simulate_serialized_transaction(serialized_txn: Uint8Array) {
+        await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
+        const start = Date.now()/1000;
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, "Call dryRunTransactionBlock")
+        const transactionResponse = await this.client.dryRunTransactionBlock({transactionBlock: serialized_txn})
+        logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.SUI_CLIENT, `Call dryRunTransactionBlock took ${Date.now()/1000 - start} secs`);
+        this.last_sui_rpc_request_ms = Date.now();
+        return {receipt: {digest: ""}, transactionResponse}
+    }
+
 }

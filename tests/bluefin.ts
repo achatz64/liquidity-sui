@@ -18,7 +18,9 @@ const example_config_bluefin: ConfigManagerBluefin = {
     tick_window_size: 30,
     collector_delivery_every_ms: 1000,
     collector_url: "http://localhost:7001/delivery",
-    server_port: 6003 
+    server_port: 6003,
+    liquidity_test_every_ms: 4 * 1000,
+    bump_after_failed_liq_test_by_ms: 60 * 1000 
 }
 
 const pool_manager = new PoolManagerBluefin(example_config_bluefin);

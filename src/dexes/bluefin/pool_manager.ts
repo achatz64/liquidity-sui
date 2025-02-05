@@ -1,13 +1,12 @@
 import { bluefin_liquidity } from "../../config/packages";
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
-import { PoolManagerWithClient, ConfigManagerWithClient  } from "../../defs/pool_manager";
+import { PoolManagerWithClientAndLiquidityContract, ConfigManagerWithClientAndLiquidityContract  } from "../../defs/pool_manager";
 import { check_dynamic, Dex, Model, Pool, Tick } from "../../defs/pools";
 import { liquidity_window_to_liquidity, parse_liquidity_window_event, sleep, wait_for_call } from "../../utils";
 
 import { Transaction } from "@mysten/sui/transactions";
 
-
-export interface ConfigManagerBluefin extends ConfigManagerWithClient {
+export interface ConfigManagerBluefin extends ConfigManagerWithClientAndLiquidityContract {
     dex: Dex.Bluefin,
     bluefin_api_wait_ms: number,
     threshold_liquidity_usd_for_pool: number,
@@ -16,7 +15,7 @@ export interface ConfigManagerBluefin extends ConfigManagerWithClient {
     tick_window_size: number
 }
 
-export class PoolManagerBluefin extends PoolManagerWithClient {
+export class PoolManagerBluefin extends PoolManagerWithClientAndLiquidityContract {
     last_call_bluefin_api: number
     config: ConfigManagerBluefin
     constructor(config: ConfigManagerBluefin) {

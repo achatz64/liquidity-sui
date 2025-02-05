@@ -1,13 +1,13 @@
 import { cetus_liquidity } from "../../config/packages";
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
-import { PoolManagerWithClient, ConfigManagerWithClient  } from "../../defs/pool_manager";
+import { PoolManagerWithClientAndLiquidityContract, ConfigManagerWithClientAndLiquidityContract  } from "../../defs/pool_manager";
 import { check_dynamic, Dex, Model, Pool, Tick } from "../../defs/pools";
 import { parse_event, sleep, wait_for_call } from "../../utils";
 
 import { Transaction } from "@mysten/sui/transactions";
 
 
-export interface ConfigManagerCetus extends ConfigManagerWithClient {
+export interface ConfigManagerCetus extends ConfigManagerWithClientAndLiquidityContract {
     dex: Dex.Cetus,
     cetus_api_wait_ms: number,
     threshold_liquidity_usd_for_pool: number,
@@ -15,7 +15,7 @@ export interface ConfigManagerCetus extends ConfigManagerWithClient {
     pools_per_sui_liquidity_fetch_call: number
 }
 
-export class PoolManagerCetus extends PoolManagerWithClient {
+export class PoolManagerCetus extends PoolManagerWithClientAndLiquidityContract {
     last_call_cetus_api: number
     config: ConfigManagerCetus
     constructor(config: ConfigManagerCetus) {
