@@ -101,6 +101,7 @@ export class PoolManagerKriya extends PoolManagerWithClient {
             dex: this.config.dex, 
             model: model, 
             coin_types: [pool_info.tokenX.coinType, pool_info.tokenY.coinType],
+            coin_decimals: [pool_info.tokenX.decimals, pool_info.tokenY.decimals],
             pool_call_types: [pool_info.tokenX.coinType, pool_info.tokenY.coinType],
             static_fee,
             protocol_fee_factor: Number(pool_info.protocolFeesPercent)/static_fee

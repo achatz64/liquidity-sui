@@ -1,6 +1,6 @@
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
 import { PoolManagerWithClient, ConfigManagerWithClient  } from "../../defs/pool_manager";
-import { Dex, Model, Pool } from "../../defs/pools";
+import { Dex, Model, Pool, update_coin_decimals_per_pool } from "../../defs/pools";
 import { sleep} from "../../utils";
 
 
@@ -75,7 +75,6 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
 
     parse_basic_pool_info(pool_info: AftermathBasicPoolInfo, object_fields: {fields: {weights: string[], type_names: string[], fees_swap_in: string[], fees_swap_out: string[]}}): Pool {
     
-
         const weights = object_fields.fields.weights.map((weight) => Number(weight.slice(0, 4))/10000)
         
         const no_fees_out = (object_fields.fields.fees_swap_out as string[]).every((fee) => Number(fee)==0)
@@ -102,6 +101,13 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
             weights,
             static_fee: fees[0] + 50, // TODO: Understand where the 0.5bp fee comes from? 
         };
+
+        const coin_decimals: {[address: string]: number} = {}
+        for (const address in pool_info.coins) {
+            coin_decimals[address] = pool_info.coins[address].decimals
+        }
+
+        update_coin_decimals_per_pool(pool, coin_decimals);
         
         return pool;
     }

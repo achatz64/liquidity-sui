@@ -39,7 +39,8 @@ export interface Pool {
     weights?: number[], // balancer
     stable_amplification?: number,
     tick_spacing?: number,
-    
+    coin_decimals?: number[] // decimals of coin_types, used for stable pools
+
     // dynamic
     liquidity?: Tick[], // tick_index is I32 and fits in number, liquidity_net is I128
     orderbook?: {bids: {price: number, quantity: number}[], asks: {price: number, quantity: number}[]},
@@ -47,7 +48,6 @@ export interface Pool {
     // meta
     stats_balances?: bigint[], // per coin_type, u64
     tvl?: number // in usdc
-    coin_decimals?: number[] // decimals of coin_types
 
     // workflow
     last_static_update?: {time_ms: number, success: boolean, counter: number}, 
@@ -146,6 +146,7 @@ export function to_essential_json(pool: Pool): {
         stable_amplification?: number,
         tick_spacing?: number,
         weights?: number[],
+        decimals?: number[],
         
         // dynamic
         liquidity?: [number, string][], 
@@ -163,7 +164,8 @@ export function to_essential_json(pool: Pool): {
         stable_amplification: pool.stable_amplification,
         tick_spacing: pool.tick_spacing,
         weights: pool.weights,
-        
+        decimals: pool.coin_decimals,
+
         // dynamic
         liquidity: pool.liquidity?.map((tick) => {
             return [tick.tick_index, tick.liquidity_net.toString()]
