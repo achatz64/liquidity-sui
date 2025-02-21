@@ -146,7 +146,7 @@ export function to_essential_json(pool: Pool): {
         stable_amplification?: number,
         tick_spacing?: number,
         weights?: number[],
-        decimals?: number[],
+        coin_decimals?: number[],
         
         // dynamic
         liquidity?: [number, string][], 
@@ -164,7 +164,7 @@ export function to_essential_json(pool: Pool): {
         stable_amplification: pool.stable_amplification,
         tick_spacing: pool.tick_spacing,
         weights: pool.weights,
-        decimals: pool.coin_decimals,
+        coin_decimals: pool.coin_decimals,
 
         // dynamic
         liquidity: pool.liquidity?.map((tick) => {
