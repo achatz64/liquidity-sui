@@ -1,14 +1,16 @@
 import { sleep } from "../src/utils";
 
 async function call_pools() {
-    const response: AftermathBasicPoolInfo[] = await (await fetch("https://aftermath.finance/api/pools/", {
+    const response_raw = await fetch("https://aftermath.finance/api/pools", {
         "headers": {
-            "content-type": "text/plain",
+            "accept": "*/*",
+            "content-type": "application/json",
         },
-        "body": null,
-        "method": "GET"
-        })
-    ).json();
+        "body": "{}",
+        "method": "POST"
+        });
+    
+    const response : AftermathBasicPoolInfo[]  = await response_raw.json();
 
     let i=0;
     while (i < response.length){

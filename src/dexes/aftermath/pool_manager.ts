@@ -26,12 +26,13 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
 
         if (Date.now()-this.last_call_aftermath_api > this.config.aftermath_api_wait_ms) {
             try {
-                const response: AftermathBasicPoolInfo[] = await (await fetch("https://aftermath.finance/api/pools/", {
+                const response: AftermathBasicPoolInfo[] = await (await fetch("https://aftermath.finance/api/pools", {
                     "headers": {
-                        "content-type": "text/plain",
+                        "accept": "*/*",
+                        "content-type": "application/json",
                     },
-                    "body": null,
-                    "method": "GET"
+                    "body": "{}",
+                    "method": "POST"
                     })
                 ).json();
                 
