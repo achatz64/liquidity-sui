@@ -69,7 +69,7 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
 
     condition_for_pool(pool_info: AftermathBasicPoolInfo): boolean {
         if (pool_info.stats) {
-            return Number(pool_info.stats.tvl) > this.config.threshold_liquidity_usd_for_pool
+            return Number(pool_info.stats.tvl) > this.config.threshold_liquidity_usd_for_pool && Number(pool_info.stats.volume) > 100
         }
         else return false;
     }
