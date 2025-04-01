@@ -3,6 +3,9 @@ import { PoolManagerWithClient, ConfigManagerWithClient  } from "../../defs/pool
 import { Dex, Model, Pool, update_coin_decimals_per_pool } from "../../defs/pools";
 import { sleep} from "../../utils";
 
+const black_listed_pools = [
+    "0x54ec48aee5144ace9d48cd4a09b8f3da309d1cf4d439de68578e1c6b5fc39fd4"
+];
 
 export interface ConfigManagerAftermath extends ConfigManagerWithClient {
     dex: Dex.Aftermath,
@@ -69,7 +72,7 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
 
     condition_for_pool(pool_info: AftermathBasicPoolInfo): boolean {
         if (pool_info.stats) {
-            return Number(pool_info.stats.tvl) > this.config.threshold_liquidity_usd_for_pool && Number(pool_info.stats.volume) > 100
+            return Number(pool_info.stats.tvl) > this.config.threshold_liquidity_usd_for_pool && Number(pool_info.stats.volume) > 100 && !black_listed_pools.includes(pool_info.objectId) 
         }
         else return false;
     }
