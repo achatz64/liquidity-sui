@@ -56,7 +56,7 @@ export class PoolManagerAftermath extends PoolManagerWithClient {
                         const pool = response.filter((p) => p.objectId == address)[0];
                         pool.stats = stats[j];
                     });
-                    sleep(1000);
+                    sleep(3000);
                 }
                 this.last_call_aftermath_api = Date.now();
 
