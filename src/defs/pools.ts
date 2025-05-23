@@ -110,7 +110,10 @@ export function check_dynamic(pool: Pool): boolean {
     const check_for_static =  check_static(pool);
 
     if (pool.model == "UniswapV3") {
-        return check_for_static && pool.liquidity !== undefined
+        if (pool.liquidity !== undefined) {
+            return check_for_static && pool.liquidity.length != 0
+        }
+        else {return false}  
     }
     else if (pool.model == "Amm" || pool.model == "StableAmm" || pool.model == "KriyaStable" || pool.model == "AftermathStable")  {
         return check_for_static 
