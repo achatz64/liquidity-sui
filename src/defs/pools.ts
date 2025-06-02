@@ -16,7 +16,9 @@ export enum Dex {
     Aftermath = "Aftermath",
     Bluefin = "Bluefin",
     Kriya = "Kriya",
-    Turbos = "Turbos"
+    Turbos = "Turbos",
+    Momentum = "Momentum",
+    Steam = "Steam"
 }
 
 export interface Tick {

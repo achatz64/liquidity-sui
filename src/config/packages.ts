@@ -3,6 +3,9 @@
 export const cetus_liquidity = "0x4fbe59d114bdfb2066c5664933475286f184b6eb8c3f348ec8e91f60e565df15"
 export const bluefin_liquidity = "0xb6e1bab86b09e9f837a0273cf7a6e5f202981bef91e7dc6522396e4749aec15c"
 export const kriya_liquidity = "0xed27b7f3a62826b5728a54e4256d5995aa14fda9a12c38fdcafbb7d004fa3ea5"
+// TODO
+export const momentum_liquidity = "0x" 
+export const steam_liquidity = "0x"
 
 export const price_packages: {[dex: string]: string} = {
     "Cetus": "0x2bd962436a13deb0d102ed5ede297e1797fb8c0c4bdaada4d66e6708a16d90ee",
