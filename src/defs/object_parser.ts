@@ -5,7 +5,7 @@ export function object_parser(object_data: {fields: {[keys: string]: any}, dex: 
     if (object_data.dex == Dex.Cetus || object_data.dex == Dex.Bluefin) {
         return {sp: object_data.fields.current_sqrt_price as string}
     }
-    if (object_data.dex == Dex.Turbos) {
+    if (object_data.dex == Dex.Turbos || object_data.dex == Dex.Momentum) {
         return {sp: object_data.fields.sqrt_price as string}
     }
     if (object_data.dex == Dex.Aftermath) {

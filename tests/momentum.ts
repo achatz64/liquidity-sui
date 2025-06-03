@@ -5,7 +5,7 @@ const example_config_cetus: ConfigManagerMomentum = {
     dex: Dex.Momentum,
     momentum_api_wait_ms: 3 * 1000,
     threshold_liquidity_usd_for_pool: 40000,
-    update_liquidity_ms: 120 * 1000,
+    update_liquidity_ms: 60 * 1000,
     debug: true,
     propose_pools_timer_ms: 600 * 1000,
     static_upgrade_timer_ms: 600 * 1000, // plays no role
@@ -18,8 +18,9 @@ const example_config_cetus: ConfigManagerMomentum = {
     collector_delivery_every_ms: 1000,
     collector_url: "http://localhost:7001/delivery",
     server_port: 6006,
-    liquidity_test_every_ms: 4000,
-    bump_after_failed_liq_test_by_ms: 120 * 1000,
+    //liquidity_test_every_ms: 4000,
+    //bump_after_failed_liq_test_by_ms: 120 * 1000,
+    tick_window_size: 30,
 }
 
 const pool_manager = new PoolManagerMomentum(example_config_cetus);

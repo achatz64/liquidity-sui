@@ -1,21 +1,22 @@
 import { momentum_liquidity } from "../../config/packages";
 import { logger, LogLevel, LogTopic } from "../../defs/logging";
-import { PoolManagerWithClientAndLiquidityContract, ConfigManagerWithClientAndLiquidityContract  } from "../../defs/pool_manager";
+import { PoolManagerWithClient, ConfigManagerWithClient  } from "../../defs/pool_manager";
 import { check_dynamic, Dex, Model, Pool, Tick } from "../../defs/pools";
-import { parse_event, sleep, wait_for_call } from "../../utils";
+import { liquidity_window_to_liquidity, parse_liquidity_window_event, sleep, wait_for_call } from "../../utils";
 
 import { Transaction } from "@mysten/sui/transactions";
 
 
-export interface ConfigManagerMomentum extends ConfigManagerWithClientAndLiquidityContract {
+export interface ConfigManagerMomentum extends ConfigManagerWithClient {
     dex: Dex.Momentum,
     momentum_api_wait_ms: number,
     threshold_liquidity_usd_for_pool: number,
     update_liquidity_ms: number,
-    pools_per_sui_liquidity_fetch_call: number
+    pools_per_sui_liquidity_fetch_call: number,
+    tick_window_size: number
 }
 
-export class PoolManagerMomentum extends PoolManagerWithClientAndLiquidityContract {
+export class PoolManagerMomentum extends PoolManagerWithClient {
     last_call_momentum_api: number
     config: ConfigManagerMomentum
     constructor(config: ConfigManagerMomentum) {
@@ -96,40 +97,49 @@ export class PoolManagerMomentum extends PoolManagerWithClientAndLiquidityContra
         return pools.map((_)=>false);
     }
 
-    async create_liquidity_fetch_txn_and_simulate(pools: Pool[]): Promise<Tick[][]> {   
+    async create_liquidity_fetch_txn_and_simulate(pools: Pool[]): Promise<LiquidityWindow[]> {   
         const package_id = momentum_liquidity; 
         
         const tx = new Transaction();
-        
+                
         for (const pool of pools) {
             const liquidity_vector = tx.moveCall({
-                target: `${package_id}::liquidity::get_liquidity`,
-                arguments: [tx.object(pool.address)],
+                target: `${package_id}::liquidity::get_liquidity_window`,
+                arguments: [tx.object(pool.address), tx.pure.u32(this.config.tick_window_size)],
                 typeArguments: pool.coin_types!
             })
         
             tx.moveCall({
-                target: `${package_id}::liquidity::emit_single_ticks`,
+                target: `${package_id}::liquidity::emit_liquidity_window`,
                 arguments: [liquidity_vector[0]]
             })
         }
 
         const response = await this.simulateTransaction(tx) 
-        const liquidity_vectors = response.transactionResponse.events.map((event)=> {
-            const parsed = event.parsedJson as {'data': {index: {bits: string}, liquidity_net: {bits: string}}[]};
-            return parse_event(parsed.data)
+        const liquidity_windows: LiquidityWindow[] = response.transactionResponse.events.map((event)=> {
+            const parsed = event.parsedJson as {
+                current_liquidity: string,
+                current_tick: {bits: string},
+                tick_spacing: string,
+                window_size: string,
+                ticks: {index: {bits: string}, liquidity_net: {bits: string}}[]
+            };
+            return parse_liquidity_window_event(parsed)
         })
-        return liquidity_vectors
+        return liquidity_windows
     }
 
     async update_liquidity(pools: Pool[]): Promise<boolean> { 
         await wait_for_call(this.last_sui_rpc_request_ms, this.config.sui_rpc_wait_time_ms);
         try {
             const momentum_liquidity = await this.create_liquidity_fetch_txn_and_simulate(pools);
+            this.last_sui_rpc_request_ms = Date.now();
             if (momentum_liquidity.length != pools.length) {
                 throw new Error("Fetched liquidity does not match pools")
             }
-            momentum_liquidity.forEach((ticks, i)=> {pools[i].liquidity = ticks});
+            momentum_liquidity.forEach((liquidity_window, i)=> {
+                pools[i].liquidity = liquidity_window_to_liquidity(liquidity_window);
+            });
             pools.forEach((pool) => {pool.last_pull = {time_ms: Date.now(), success: true, counter: 0};})
             return true;
         }
@@ -224,3 +234,10 @@ interface MomentumApiPoolsResponse {
     data: MomentumBasicPoolInfo[]   
 }
 
+export interface LiquidityWindow {
+    current_liquidity: bigint,
+    current_tick: number,
+    tick_spacing: number,
+    window_size: number, 
+    ticks: Tick[]
+}
