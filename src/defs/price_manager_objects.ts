@@ -64,9 +64,15 @@ export class PriceManager {
         const all_pools: Pool[] =[];
     
         for (const dex of Object.values(Dex)) {
-            const dex_data = request[dex].data;
-            const dex_pools: Pool[] = JSON.parse(dex_data);
-            dex_pools.forEach((p) => all_pools.push(p));
+            if (request[dex] !== undefined) {
+                const dex_data = request[dex].data;
+                const dex_pools: Pool[] = JSON.parse(dex_data);
+                dex_pools.forEach((p) => all_pools.push(p));
+            } 
+            else {
+                logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_POOLS, `Dex ${dex} not found in retrieved pools`);
+            }
+            
         }
 
         return all_pools;
