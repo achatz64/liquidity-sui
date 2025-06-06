@@ -6,6 +6,11 @@ import { liquidity_window_to_liquidity, parse_liquidity_window_event, sleep, wai
 
 import { Transaction } from "@mysten/sui/transactions";
 
+const black_listed_pools: string[] = [
+    // "0xe60bc7ade245b9f35b49686dfab0a18e5ca9176d49bef1b90f60d67d06315ff0",
+    // "0x3b585786b13af1d8ea067ab37101b6513a05d2f90cfe60e8b1d9e1b46a63c4fa"
+];
+
 export interface ConfigManagerBluefin extends ConfigManagerWithClientAndLiquidityContract {
     dex: Dex.Bluefin,
     bluefin_api_wait_ms: number,
@@ -51,7 +56,7 @@ export class PoolManagerBluefin extends PoolManagerWithClientAndLiquidityContrac
     }
 
     condition_for_pool(pool_info: BluefinBasicPoolInfo): boolean {
-        return Number(pool_info.tvl) > this.config.threshold_liquidity_usd_for_pool
+        return Number(pool_info.tvl) > this.config.threshold_liquidity_usd_for_pool && !black_listed_pools.includes(pool_info.address) 
     }
 
     parse_basic_pool_info(pool_info: BluefinBasicPoolInfo): Pool {
