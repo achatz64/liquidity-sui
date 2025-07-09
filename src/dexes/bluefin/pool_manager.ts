@@ -7,7 +7,8 @@ import { liquidity_window_to_liquidity, parse_liquidity_window_event, sleep, wai
 import { Transaction } from "@mysten/sui/transactions";
 
 const black_listed_pools: string[] = [
-    "0x8f3c373b2a66cfee321768695807e8d823c5a91af184ceaf9310bd12c304b981"
+    "0x8f3c373b2a66cfee321768695807e8d823c5a91af184ceaf9310bd12c304b981",
+    "0xe71aa89df60e737f1b687f8dfbd51e2a9b35706e9e5540ce9b053bd53fcb9ec3"
     // "0xe60bc7ade245b9f35b49686dfab0a18e5ca9176d49bef1b90f60d67d06315ff0",
     // "0x3b585786b13af1d8ea067ab37101b6513a05d2f90cfe60e8b1d9e1b46a63c4fa"
 ];
