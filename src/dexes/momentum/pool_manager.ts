@@ -6,6 +6,7 @@ import { liquidity_window_to_liquidity, parse_liquidity_window_event, sleep, wai
 
 import { Transaction } from "@mysten/sui/transactions";
 
+const black_listed_pools: string[] = ["0x53f204110bf072d08d64902b7a70ce07acfd7adfe6574da119f8ef56e635f44f"]
 
 export interface ConfigManagerMomentum extends ConfigManagerWithClient {
     dex: Dex.Momentum,
@@ -57,7 +58,7 @@ export class PoolManagerMomentum extends PoolManagerWithClient {
     }
 
     condition_for_pool(pool_info: MomentumBasicPoolInfo): boolean {
-        return Number(pool_info.tvl) > this.config.threshold_liquidity_usd_for_pool
+        return Number(pool_info.tvl) > this.config.threshold_liquidity_usd_for_pool && !black_listed_pools.includes(pool_info.poolId) 
     }
 
     parse_basic_pool_info(pool_info: MomentumBasicPoolInfo): Pool {
