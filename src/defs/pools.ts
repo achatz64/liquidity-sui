@@ -18,6 +18,7 @@ export enum Dex {
     Kriya = "Kriya",
     Turbos = "Turbos",
     Momentum = "Momentum",
+    Suilend = "Suilend"
     //Steam = "Steam"
 }
 

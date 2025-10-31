@@ -320,13 +320,18 @@ export class PriceManager {
             const split_number_pools = 25;
 
             for (const dex of Object.values(Dex)) {
-                const dex_to_process = to_process.filter((info) => info.dex==dex);
-                const pool_ids = dex_to_process.map((info)=> info.address);
-                const splittings = Math.floor(pool_ids.length / split_number_pools);
-                for (let i=0; i < splittings + 1; i++) {
-                    const ids = pool_ids.slice(i * split_number_pools, (i+1)*split_number_pools)
-                    const feed = create_pool_feed(`${dex}_${i}`, ids); 
-                    feeds.push(feed);
+                if (dex != Dex.Suilend) {
+                    const dex_to_process = to_process.filter((info) => info.dex==dex);
+                    const pool_ids = dex_to_process.map((info)=> info.address);
+                    const splittings = Math.floor(pool_ids.length / split_number_pools);
+                    for (let i=0; i < splittings + 1; i++) {
+                        const ids = pool_ids.slice(i * split_number_pools, (i+1)*split_number_pools)
+                        const feed = create_pool_feed(`${dex}_${i}`, ids); 
+                        feeds.push(feed);
+                    }
+                }
+                else if (dex == Dex.Suilend) {
+                    //TODO
                 }
             }
 
