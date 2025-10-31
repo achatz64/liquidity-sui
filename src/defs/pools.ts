@@ -92,7 +92,7 @@ export function check_pool(pool: Pool): boolean {
 
 export function check_static(pool: Pool): boolean {
     if (pool.model == "UniswapV3") {
-        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.pool_call_types !== undefined && pool.tick_spacing !== undefined)
+        return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.pool_call_types !== undefined)
     }
     else if (pool.model == "Amm" || pool.model == "Orderbook" || pool.model == "KriyaStable" || pool.model == "AftermathStable")  {
         return (pool.coin_types !== undefined && pool.static_fee !== undefined && pool.pool_call_types !== undefined)

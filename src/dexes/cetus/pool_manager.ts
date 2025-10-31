@@ -33,17 +33,26 @@ export class PoolManagerCetus extends PoolManagerWithClientAndLiquidityContract 
         while (!stop_requesting_pages) {
             if (Date.now()-this.last_call_cetus_api > this.config.cetus_api_wait_ms) {
                 const limit = 30;
-                const response: CetusApiPoolsResponse = await (await fetch(`https://api-sui.cetus.zone/v2/sui/stats_pools?is_vaults=false&display_all_pools=false&has_mining=true&has_farming=true&no_incentives=true&order_by=-vol&limit=${limit}&offset=${(page-1) * limit}`, {
+                const offset = (page-1) * limit;
+                const payload = {
+                    filter: "verified",
+                    sortBy: "vol",
+                    sortOrder: "desc",
+                    limit,
+                    offset
+                }
+                const response: CetusApiPoolsResponse = await (await fetch("https://api-sui.cetus.zone/v3/sui/clmm/stats_pools", {
                     "headers": {
-                      "accept": "*/*",
+                    "accept": "*/*"
                     },
-                    "body": null,
-                    "method": "GET"
-                  })).json();
+                    "body": JSON.stringify(payload),
+                    "method": "POST"
+                })).json();
+                
                 this.last_call_cetus_api = Date.now();
-                if (response.code == 200) {
+                if (response.code == 0) {
                     logger(this.config.debug, LogLevel.DEBUG, LogTopic.PROPOSE_POOLS, `Read page ${page} of Cetus pools`)
-                    const new_pools = response.data.lp_list.filter(condition_for_pool);
+                    const new_pools = response.data.list.filter(condition_for_pool);
                     if (new_pools.length == 0) {stop_requesting_pages = true;}
                     else {
                         new_pools.forEach((pool) => pools.push(pool));
@@ -59,18 +68,17 @@ export class PoolManagerCetus extends PoolManagerWithClientAndLiquidityContract 
     }
 
     condition_for_pool(pool_info: CetusBasicPoolInfo): boolean {
-        return Number(pool_info.pure_tvl_in_usd) > this.config.threshold_liquidity_usd_for_pool
+        return Number(pool_info.tvl) > this.config.threshold_liquidity_usd_for_pool
     }
 
     parse_basic_pool_info(pool_info: CetusBasicPoolInfo): Pool {
         const pool: Pool = {
-            address: pool_info.address, 
+            address: pool_info.pool, 
             dex: this.config.dex, 
             model: Model.UniswapV3, 
-            coin_types: [pool_info.coin_a_address, pool_info.coin_b_address],
-            pool_call_types: [pool_info.coin_a_address, pool_info.coin_b_address],
-            static_fee: Math.floor(Number(pool_info.fee) * 100 * 10000),
-            tick_spacing: pool_info.object.tick_spacing
+            coin_types: [pool_info.coinA.coinType, pool_info.coinB.coinType],
+            pool_call_types: [pool_info.coinA.coinType, pool_info.coinB.coinType],
+            static_fee: pool_info.feeRate,
         };
         
         return pool;
@@ -188,40 +196,23 @@ export class PoolManagerCetus extends PoolManagerWithClientAndLiquidityContract 
 }
 
 interface CetusCoinInfo {
-    name: string,
-    symbol: string,
-    decimals: number,
-    address: string, // coin type
-    balance: string,
-    logo_url: string,
-    coingecko_id: string,
-    project_url: string,
-    is_trusted: boolean,
+    coinType: string, // e.g. "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+    symbol: string // cetus symbol
+    decimals: number
+    isVerified: boolean
   }
 
 interface CetusBasicPoolInfo {
-    address: string, //pool address
-    coin_a: CetusCoinInfo // 
-    coin_a_address: string, // coin type 
-    coin_b: CetusCoinInfo, // 
-    coin_b_address: string, // coin type
-    fee: string, // float e.g. "0.0025"
-    pure_tvl_in_usd: string,
-    
-    // pool object fields
-    object: {
-        coin_a: number, // amount of token
-        coin_b: number, 
-        current_sqrt_price: string,
-        index: number,
-        liquidity: string,
-        tick_spacing: number
-    }
+    pool: string, //pool address
+    coinA: CetusCoinInfo // 
+    coinB: CetusCoinInfo, // 
+    feeRate: number, //  e.g. 10 in 100 * bps, here 10 = 0.1 bps
+    tvl: string
 }
 
 interface CetusApiPoolsResponse {
     code: number,
     msg: string,
-    data: {total: number, lp_list: CetusBasicPoolInfo[]}   
+    data: {total: number, list: CetusBasicPoolInfo[]}   
 }
 
