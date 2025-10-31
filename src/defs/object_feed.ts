@@ -53,6 +53,7 @@ export async function get_objects(feeds: ObjectFeed[], client: SuiClient): Promi
     }
 
     const responses = await Promise.all(places.map((ids) => client.multiGetObjects({ids, options: {"showContent": true}})));
+    //console.log(`Fetched ${responses.map((v)=> v.length).reduce((p, c) => p + c, 0)}`);
 
     const ret: {[feed_name: string]: ParserTarget} = {};
     feeds.forEach((feed) => {
@@ -67,17 +68,3 @@ export async function get_objects(feeds: ObjectFeed[], client: SuiClient): Promi
     return ret;
 }
 
-export async function feed(callback: (data: {[feed_name: string]: ParserTarget}) => void, wait_time_ms: number, feeds: ObjectFeed[], client: SuiClient) {
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-        try {
-            const data = await get_objects(feeds, client);
-            callback(data);
-            await new Promise(resolve => setTimeout(resolve, wait_time_ms));
-        }
-        catch (error) {
-            console.log(`${Date.now()} Object feed error: ${error}`)
-            await new Promise(resolve => setTimeout(resolve, 2 * wait_time_ms));
-        }
-    }
-}

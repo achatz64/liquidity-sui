@@ -34,14 +34,15 @@ function create_parser(dex: string): (pools: SuiObjectResponse[]) => ParserTarge
             if (dex.startsWith(Dex.Kriya)) {
                 const content_fields = (content as unknown as {fields: {sqrt_price?: string, token_x?: string, token_y?: string}}).fields;
                 if (content_fields.sqrt_price) {
-                    return {sp: content_fields.sqrt_price as string}
+                    ret[id] = {sp: content_fields.sqrt_price as string}
                 }
                 else {
                     const balances = [content_fields.token_x!, content_fields.token_y!]
-                    return {b: balances}
+                    ret[id] = {b: balances}
                 }
             }
         }
+        //console.log(`Parsed ${Object.keys(ret).length} ids for ${dex}`);
         return ret;
     }
     return parser

@@ -315,13 +315,6 @@ export class PriceManager {
     async get_prices() {
         try {
             const to_process = this.prices.data;
-            const dex_to_ids: {[dex: string]: string[]} = {}
-            to_process.forEach((price_info) => {
-                const dex = price_info.dex;
-                dex_to_ids[dex] = dex_to_ids[dex] ?? [];
-                const id = price_info.address;
-                dex_to_ids[dex].push(id);
-            })
             const feeds: ObjectFeed[] = [];
 
             const split_number_pools = 25;
@@ -337,7 +330,11 @@ export class PriceManager {
                 }
             }
 
+            const start = Date.now();
+            //logger(this.config.debug, LogLevel.DEBUG, LogTopic.SUI_CLIENT, `Processing feeds ${feeds.map((f)=>f.name).join(", ")}`);
             const parsed = await get_objects(feeds, this.client);
+            logger(this.config.debug, LogLevel.DEBUG, LogTopic.SUI_CLIENT, `Sui get_object done in ${Date.now()-start} ms`);
+
             // collect all timestamps
             const timestamps: number[] = []
             for (const feed_name in parsed) {
