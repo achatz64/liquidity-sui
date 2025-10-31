@@ -6,7 +6,8 @@ import { getFullnodeUrl, SuiClient } from '@mysten/sui/client'
 import { Transaction } from '@mysten/sui/transactions'
 import { sleep, wait_for_call } from "../utils";
 import { logger, LogLevel, LogTopic } from "./logging";
-import { object_parser } from "./object_parser";
+import { ObjectFeed, get_objects } from "./object_feed";
+import { create_pool_feed } from "./price_feeds";
 
 export interface PriceInfo {
     address: string,
@@ -147,10 +148,9 @@ export class PriceManager {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handle_object(object_data: {fields: {[keys: string]: any}, dex: Dex, id: string, model: Model}) {
-        const to_modify = this.prices.data.find((v) => v.address == object_data.id);
+    handle_object(entry: {sp?: string, b?: string[]}, dex: Dex, id: string) {
+        const to_modify = this.prices.data.find((v) => v.address == id);
         if (to_modify) {
-            const entry = object_parser(object_data);
             if (entry.b !== undefined) {
                 to_modify.balances = entry.b!.map((s) => BigInt(s));
             }
@@ -162,7 +162,7 @@ export class PriceManager {
             }
         }
         else {
-            logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `Cannot find pool ${object_data.id}`)
+            logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `Cannot find pool ${id}`)
         }
     }
 
@@ -314,64 +314,61 @@ export class PriceManager {
 
     async get_prices() {
         try {
-            const timer_id = "0x0000000000000000000000000000000000000000000000000000000000000006";
-            let remaining = this.prices.data;
-            const dex_data: Dex[][] = [];
-            const model_data: Model[][] = [];
-            const ids_data: string[][] = [];
-            const multi_object_request_length = 30;
+            const to_process = this.prices.data;
+            const dex_to_ids: {[dex: string]: string[]} = {}
+            to_process.forEach((price_info) => {
+                const dex = price_info.dex;
+                dex_to_ids[dex] = dex_to_ids[dex] ?? [];
+                const id = price_info.address;
+                dex_to_ids[dex].push(id);
+            })
+            const feeds: ObjectFeed[] = [];
 
-            while (remaining.length > 0) {
-                const ids = remaining.slice(0, multi_object_request_length - 1).map((p) => p.address);
-                ids_data.push(ids);
-                dex_data.push(remaining.slice(0, multi_object_request_length - 1).map((p) => p.dex));
-                model_data.push(remaining.slice(0, multi_object_request_length - 1).map((p) => p.model))
-                
-                ids.push(timer_id); // clock id always last
-                remaining = remaining.slice(multi_object_request_length - 1);
+            const split_number_pools = 25;
+
+            for (const dex of Object.values(Dex)) {
+                const dex_to_process = to_process.filter((info) => info.dex==dex);
+                const pool_ids = dex_to_process.map((info)=> info.address);
+                const splittings = Math.floor(pool_ids.length / split_number_pools);
+                for (let i=0; i < splittings + 1; i++) {
+                    const ids = pool_ids.slice(i * split_number_pools, (i+1)*split_number_pools)
+                    const feed = create_pool_feed(`${dex}_${i}`, ids); 
+                    feeds.push(feed);
+                }
             }
 
-            const start = Date.now()
-            const responses = await Promise.all(ids_data.map((ids) => this.client.multiGetObjects({ids, options: {"showContent": true}})));
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const fields = responses.map((response, i) => response.map((r, j) => {return {fields: (r.data?.content as {'fields': {[key: string]: any}}).fields, dex: dex_data[i][j], id: ids_data[i][j], model: model_data[i][j]}}))
-            logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_PRICE, `Multi getObjects done in ${Date.now()-start} ms`)
+            const parsed = await get_objects(feeds, this.client);
+            // collect all timestamps
+            const timestamps: number[] = []
+            for (const feed_name in parsed) {
+                const value = parsed[feed_name] as {timestamp_ms: string};
+                timestamps.push(Number(value.timestamp_ms))
+            }
 
-            const timestamps = fields.map((r)=> (r[r.length - 1].fields as {timestamp_ms: string}).timestamp_ms)
             if (timestamps.length > 0) {
                 const timestamp = timestamps[0]
                 if (timestamps.every((v) => v==timestamp)) {
 
-                    fields.forEach((r) => r.slice(0, r.length - 1).forEach((object_data) => this.handle_object(object_data)))
+                    for (const dex of Object.values(Dex)) {
+                        for (const feed_name in parsed) {
+                            if (feed_name.startsWith(dex)) {
+                                const value = parsed[feed_name] as {[id: string]: {sp?: string, b?: string[]}};
+                                for (const id in value) {
+                                    if (id != "timestamp_ms") {
+                                        const entry = value[id];
+                                        this.handle_object(entry, dex, id)
+                                    }
+                                }
+                            }
+                        }
+                    }
 
-                    this.prices.timestamp = Number(timestamp);
+                    this.prices.timestamp = timestamp;
                     logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_PRICE, `Timestamp difference ${Date.now()-Number(timestamp)}`)
                 }
             }
 
     
-            // if (this.pools_updated > this.last_serialization) {
-            //     const make_copy = this.pools_updated;
-            //     // serialize new txn
-            //     const tx = this.construct_price_request();
-            //     this.serialized_txn = await this.serializeTransaction(tx)
-            //     this.last_serialization = make_copy;
-            // }
-        
-            // const response = (await this.simulateTransaction()).transactionResponse;    
-            // const timestamp = this.read_time(response.events[0].parsedJson as {timestamp: string});
-            // const price_events = response.events.slice(1).map((e) => e.parsedJson as {data: {id: string, b?: string[], sp?: string}[]});
-            // price_events.forEach((e) => this.handle_event(e))
-            // this.prices.timestamp = timestamp;
-            // logger(this.config.debug, LogLevel.DEBUG, LogTopic.FETCH_PRICE, `Timestamp difference ${Date.now()-timestamp}`)
-            // if (Date.now()-timestamp < this.config.aim_lag_ms) {
-            //     if (this.fetch_price_every_ms != 500) logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.FETCH_PRICE, `Locking txn wait to 500 ms`)
-            //         this.fetch_price_every_ms = 500
-            // }
-            // else {
-            //     if (this.fetch_price_every_ms != this.config.fetch_price_every_ms) logger(this.config.debug, LogLevel.WORKFLOW, LogTopic.FETCH_PRICE, `Back to txn wait from config`)
-            //     this.fetch_price_every_ms = this.config.fetch_price_every_ms
-            // }
         }
         catch (error) {
             logger(this.config.debug, LogLevel.ERROR, LogTopic.FETCH_PRICE, `${(error as Error).message}`)

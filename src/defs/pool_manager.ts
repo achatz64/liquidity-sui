@@ -323,8 +323,7 @@ export class PoolManagerWithClient extends PoolManager {
             try {
                 const test_pools_liquidity = test_indices.map((i) => {return {
                     address: in_scope[i].address, 
-                    liquidity: in_scope[i].liquidity!,
-                    tick_spacing: in_scope[i].tick_spacing!
+                    liquidity: in_scope[i].liquidity!
                 }});
 
                 // fetch objects
@@ -488,7 +487,6 @@ export class PoolManagerWithClientAndLiquidityContract extends PoolManagerWithCl
                 const test_pools_liquidity = in_scope.map((p) => {return {
                     address: p.address, 
                     liquidity: p.liquidity!,
-                    tick_spacing: p.tick_spacing!
                 }});
 
                 // check if we need new serialization and retrieve if necessary 
