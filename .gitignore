@@ -1,7 +1,10 @@
 node_modules/
 dist/
+deployments/
 .env
 *.log
 .eslintrc.json
 package-lock.json
 .vscode/
+deploy.sh
+start_*

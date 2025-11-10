@@ -6,7 +6,7 @@ const config: ConfigPriceManager = {
     sui_rpc_wait_time_ms: 200,
     sui_rpc_wait_time_after_error_ms: 5000,
     collector_url: "http://localhost:7001/",
-    fetch_price_every_ms: 5* 1000,
+    fetch_price_every_ms: 5 * 1000,
     check_for_new_pools_every_ms: 60 * 1000
 }
 

@@ -8,6 +8,7 @@ import { sleep, wait_for_call } from "../utils";
 import { logger, LogLevel, LogTopic } from "./logging";
 import { ObjectFeed, get_objects } from "./object_feed";
 import { create_pool_feed } from "./price_feeds";
+import { create_suilend_feed } from "../dexes/suilend/price_feed";
 
 export interface PriceInfo {
     address: string,
@@ -331,7 +332,8 @@ export class PriceManager {
                     }
                 }
                 else if (dex == Dex.Suilend) {
-                    //TODO
+                    const dex_to_process = to_process.filter((info) => info.dex==dex);
+                    dex_to_process.forEach((info) => feeds.push(create_suilend_feed(info.address)))
                 }
             }
 

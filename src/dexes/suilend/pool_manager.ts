@@ -25,7 +25,8 @@ export class PoolManagerSuilend extends PoolManagerWithClient {
                 dex: this.config.dex,
                 model: Model.Amm,
                 coin_types,
-                static_fee: fee
+                static_fee: fee,
+                pool_call_types: []
             }   
             pools_proposed.push(pool);
         }
