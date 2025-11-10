@@ -18,7 +18,7 @@ export class PoolManagerSuilend extends PoolManagerWithClient {
         
         for (const id in vault_config) {
             const conf = vault_config[id];
-            const coin_types = [token_info[conf.deposit_token].type, token_info[conf.debt_token].type];
+            const coin_types = ["0x"+token_info[conf.deposit_token].type, "0x"+token_info[conf.debt_token].type];
             const fee = Math.floor(Number(conf.fee)/2**64 * 10000 * 100)
             const pool: Pool = {
                 address: id,
