@@ -60,9 +60,21 @@ const product = (prices: number[]) => {
 
 // vault data 
 export const vault_config : {[lending_account: string]: {type: string, obligation_id: string, deposit_token: string, debt_token: string, quote_token: string, fee: string, qt: string, e_minus_one: string, ref_pools: string[], price_formula: (prices: number[]) => number}} = {
-    "0x90dbf049993b40ecc5bc473414e3f61fae69436a1d8594034b49ff708d47de23": {
+    // "0x90dbf049993b40ecc5bc473414e3f61fae69436a1d8594034b49ff708d47de23": {
+    //     type: "0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::lending_market::ObligationOwnerCap<0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::suilend::MAIN_POOL>",
+    //     obligation_id: "0x16bcceda360f6576f8eca5da2bb9ace2f1332b821bd47ab38b0240e8818428a7",
+    //     fee: "3689348814741910",
+    //     qt: "36893488147419103232",
+    //     e_minus_one: "1844674407370955161",
+    //     ref_pools: ["0xf0e4772e80800550368973d1f8ab2c9a7241ace8df8770452ee2bf3e3e67b8a1", "0xb8a67c149fd1bc7f9aca1541c61e51ba13bdded64c273c278e50850ae3bff073"],
+    //     deposit_token: "WBTC",
+    //     debt_token: "USDT",
+    //     quote_token: "USDC",
+    //     price_formula: product
+    // },
+    "0x221ab18af7399a186f40b3512b99a4f7f9e02f9b0c36ae706f6ee48e87c24030": {
         type: "0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::lending_market::ObligationOwnerCap<0xf95b06141ed4a174f239417323bde3f209b972f5930d8521ea38a52aff3a6ddf::suilend::MAIN_POOL>",
-        obligation_id: "0x16bcceda360f6576f8eca5da2bb9ace2f1332b821bd47ab38b0240e8818428a7",
+        obligation_id: "0xf0ac6ac96b71db98baa73a6be62f5136f425081a418ee77b659276a2c13027f0",
         fee: "3689348814741910",
         qt: "36893488147419103232",
         e_minus_one: "1844674407370955161",
