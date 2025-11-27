@@ -6,7 +6,7 @@ import { liquidity_window_to_liquidity, parse_liquidity_window_event, sleep, wai
 
 import { Transaction } from "@mysten/sui/transactions";
 
-const black_listed_pools: string[] = ["0x53f204110bf072d08d64902b7a70ce07acfd7adfe6574da119f8ef56e635f44f"]
+const black_listed_pools: string[] = ["0x53f204110bf072d08d64902b7a70ce07acfd7adfe6574da119f8ef56e635f44f", "0x8fbcc943593b0e33f3fb15311cbf81d73f1ccf26c96b85ea290ff6dfcdbe4c9f"]
 
 export interface ConfigManagerMomentum extends ConfigManagerWithClient {
     dex: Dex.Momentum,
